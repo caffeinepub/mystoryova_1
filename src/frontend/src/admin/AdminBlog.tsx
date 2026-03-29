@@ -100,9 +100,14 @@ export default function AdminBlog() {
 
   async function load() {
     if (!actor) return;
-    const data = await actor.getBlogPosts();
-    setPosts([...data].reverse());
-    setLoading(false);
+    try {
+      const data = await actor.getBlogPosts();
+      setPosts([...data].reverse());
+    } catch {
+      // error ignored
+    } finally {
+      setLoading(false);
+    }
   }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: load is stable
@@ -138,11 +143,13 @@ export default function AdminBlog() {
         toast.success("Post created");
       }
       setShowForm(false);
-      await load();
     } catch {
       toast.error("Save failed");
+      setSaving(false);
+      return;
     }
     setSaving(false);
+    await load();
   }
 
   async function handleDelete() {

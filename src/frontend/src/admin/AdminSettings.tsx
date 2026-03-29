@@ -65,12 +65,17 @@ export default function AdminSettings() {
 
   useEffect(() => {
     if (!actor) return;
-    actor.getAllSettings().then((all) => {
-      const map: Record<string, string> = {};
-      for (const s of all) map[s.key] = s.value;
-      setSettings(map);
-      setEditing(map);
-    });
+    actor
+      .getAllSettings()
+      .then((all) => {
+        const map: Record<string, string> = {};
+        for (const s of all) map[s.key] = s.value;
+        setSettings(map);
+        setEditing(map);
+      })
+      .catch(() => {
+        // error ignored
+      });
   }, [actor]);
 
   async function saveSetting(key: string) {

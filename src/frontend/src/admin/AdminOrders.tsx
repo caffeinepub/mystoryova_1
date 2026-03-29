@@ -90,9 +90,14 @@ export default function AdminOrders() {
 
   async function load() {
     if (!actor) return;
-    const data = await actor.getOrders();
-    setOrders([...data].reverse());
-    setLoading(false);
+    try {
+      const data = await actor.getOrders();
+      setOrders([...data].reverse());
+    } catch {
+      // error ignored
+    } finally {
+      setLoading(false);
+    }
   }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: load is stable

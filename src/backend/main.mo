@@ -106,56 +106,44 @@ actor {
     value : Text;
   };
 
-  module Book {
-    public func compare(book1 : Book, book2 : Book) : Order.Order {
-      Text.compare(book1.id, book2.id);
-    };
-  };
-
-  module BlogPost {
-    public func compare(blogPost1 : BlogPost, blogPost2 : BlogPost) : Order.Order {
-      Text.compare(blogPost1.id, blogPost2.id);
-    };
-  };
-
-  // Upsert helper: remove existing key then add (mo:core Map has no put/upsert)
+  // Safe upsert helpers: remove existing key first so add() never traps
   func upsertBook(key : Text, value : Book) {
-    if (books.containsKey(key)) { books.remove(key) };
+    books.remove(key);
     books.add(key, value);
   };
 
   func upsertBlogPost(key : Text, value : BlogPost) {
-    if (blogPosts.containsKey(key)) { blogPosts.remove(key) };
+    blogPosts.remove(key);
     blogPosts.add(key, value);
   };
 
   func upsertReviews(key : Text, value : List.List<Review>) {
-    if (reviews.containsKey(key)) { reviews.remove(key) };
+    reviews.remove(key);
     reviews.add(key, value);
   };
 
   func upsertOrder(key : Text, value : Order) {
-    if (orders.containsKey(key)) { orders.remove(key) };
+    orders.remove(key);
     orders.add(key, value);
   };
 
   func upsertCoupon(key : Text, value : Coupon) {
-    if (coupons.containsKey(key)) { coupons.remove(key) };
+    coupons.remove(key);
     coupons.add(key, value);
   };
 
   func upsertAudiobook(key : Text, value : Audiobook) {
-    if (audiobooks.containsKey(key)) { audiobooks.remove(key) };
+    audiobooks.remove(key);
     audiobooks.add(key, value);
   };
 
   func upsertMerchItem(key : Text, value : MerchItem) {
-    if (merchItems.containsKey(key)) { merchItems.remove(key) };
+    merchItems.remove(key);
     merchItems.add(key, value);
   };
 
   func upsertSetting(key : Text, value : Setting) {
-    if (settings.containsKey(key)) { settings.remove(key) };
+    settings.remove(key);
     settings.add(key, value);
   };
 
@@ -174,7 +162,7 @@ actor {
 
   // Book Management
   public query func getBooks() : async [Book] {
-    books.values().toArray().sort();
+    books.values().toArray();
   };
 
   public query func getBook(id : Text) : async Book {
@@ -198,7 +186,7 @@ actor {
 
   // Blog Management
   public query func getBlogPosts() : async [BlogPost] {
-    blogPosts.values().toArray().sort();
+    blogPosts.values().toArray();
   };
 
   public query func getBlogPost(id : Text) : async BlogPost {

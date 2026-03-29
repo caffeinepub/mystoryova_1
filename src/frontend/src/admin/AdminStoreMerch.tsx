@@ -135,28 +135,33 @@ export default function AdminStoreMerch() {
 
   async function load() {
     if (!actor) return;
-    const [data, allSettings] = await Promise.all([
-      actor.getMerchItems(),
-      actor.getAllSettings(),
-    ]);
-    setItems([...data].reverse());
-    const shippingMap: Record<string, boolean> = {};
-    const ssMap: Record<string, Record<string, number>> = {};
-    for (const s of allSettings) {
-      if (s.key.startsWith("shippingFree_")) {
-        shippingMap[s.key.replace("shippingFree_", "")] = s.value === "true";
-      } else if (s.key.startsWith("sizeStock_")) {
-        const id = s.key.replace("sizeStock_", "");
-        try {
-          ssMap[id] = JSON.parse(s.value);
-        } catch {
-          // ignore
+    try {
+      const [data, allSettings] = await Promise.all([
+        actor.getMerchItems(),
+        actor.getAllSettings(),
+      ]);
+      setItems([...data].reverse());
+      const shippingMap: Record<string, boolean> = {};
+      const ssMap: Record<string, Record<string, number>> = {};
+      for (const s of allSettings) {
+        if (s.key.startsWith("shippingFree_")) {
+          shippingMap[s.key.replace("shippingFree_", "")] = s.value === "true";
+        } else if (s.key.startsWith("sizeStock_")) {
+          const id = s.key.replace("sizeStock_", "");
+          try {
+            ssMap[id] = JSON.parse(s.value);
+          } catch {
+            // ignore
+          }
         }
       }
+      setFreeShippingMap(shippingMap);
+      setSizeStockMap(ssMap);
+    } catch {
+      // error ignored
+    } finally {
+      setLoading(false);
     }
-    setFreeShippingMap(shippingMap);
-    setSizeStockMap(ssMap);
-    setLoading(false);
   }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: load is stable
@@ -207,11 +212,13 @@ export default function AdminStoreMerch() {
         });
       }
       setShowForm(false);
-      await load();
     } catch {
       toast.error("Save failed");
+      setSaving(false);
+      return;
     }
     setSaving(false);
+    await load();
   }
 
   async function handleDelete() {

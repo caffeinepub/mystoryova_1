@@ -77,9 +77,14 @@ export default function AdminCoupons() {
 
   async function load() {
     if (!actor) return;
-    const data = await actor.getCoupons();
-    setCoupons([...data].reverse());
-    setLoading(false);
+    try {
+      const data = await actor.getCoupons();
+      setCoupons([...data].reverse());
+    } catch {
+      // error ignored
+    } finally {
+      setLoading(false);
+    }
   }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: load is stable

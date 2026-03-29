@@ -13,10 +13,17 @@ export default function AdminBio() {
 
   useEffect(() => {
     if (!actor) return;
-    actor.getAuthorBio().then((b) => {
-      setBio(b);
-      setLoading(false);
-    });
+    actor
+      .getAuthorBio()
+      .then((b) => {
+        setBio(b);
+      })
+      .catch(() => {
+        // error ignored
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, [actor]);
 
   async function handleSave() {

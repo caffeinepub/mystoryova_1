@@ -120,9 +120,14 @@ export default function AdminBooks() {
 
   async function load() {
     if (!actor) return;
-    const data = await actor.getBooks();
-    setBooks([...data].reverse());
-    setLoading(false);
+    try {
+      const data = await actor.getBooks();
+      setBooks([...data].reverse());
+    } catch {
+      // error ignored, will show empty state
+    } finally {
+      setLoading(false);
+    }
   }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: load is stable
@@ -159,11 +164,13 @@ export default function AdminBooks() {
         toast.success("Book added");
       }
       setShowForm(false);
-      await load();
     } catch {
       toast.error("Failed to save book");
+      setSaving(false);
+      return;
     }
     setSaving(false);
+    await load();
   }
 
   async function handleDelete() {

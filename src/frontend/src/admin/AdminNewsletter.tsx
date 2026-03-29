@@ -25,9 +25,14 @@ export default function AdminNewsletter() {
 
   async function load() {
     if (!actor) return;
-    const data = await actor.getSubscribers();
-    setSubscribers(data);
-    setLoading(false);
+    try {
+      const data = await actor.getSubscribers();
+      setSubscribers(data);
+    } catch {
+      // error ignored
+    } finally {
+      setLoading(false);
+    }
   }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: load is stable

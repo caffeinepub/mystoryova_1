@@ -10,7 +10,6 @@ import {
 import { AUDIOBOOKS, MERCH_ITEMS } from "../data/seedStore";
 import { useActor } from "../hooks/useActor";
 import { useSEO } from "../hooks/useSEO";
-import { useScrollReveal } from "../hooks/useScrollReveal";
 import { addToCart } from "../utils/cart";
 
 type Currency = "INR" | "USD";
@@ -103,9 +102,6 @@ export default function Store({ isDark }: Props) {
     "audiobooks",
   );
   const [detailItem, setDetailItem] = useState<MerchItem | null>(null);
-  const { ref: audiobooksRef, isVisible: audiobooksVisible } =
-    useScrollReveal();
-  const { ref: merchRef, isVisible: merchVisible } = useScrollReveal();
 
   useSEO({
     title: "Store \u2014 Mystoryova",
@@ -323,10 +319,7 @@ export default function Store({ isDark }: Props) {
 
         {/* Audiobooks */}
         {activeTab === "audiobooks" && (
-          <div
-            ref={audiobooksRef}
-            className={`scroll-reveal${audiobooksVisible ? " visible" : ""}`}
-          >
+          <div>
             {loading ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {Array.from({ length: 3 }, (_, i) => `sk-${i}`).map((key) => (
@@ -371,10 +364,7 @@ export default function Store({ isDark }: Props) {
 
         {/* Merch */}
         {activeTab === "merch" && (
-          <div
-            ref={merchRef}
-            className={`scroll-reveal${merchVisible ? " visible" : ""}`}
-          >
+          <div>
             {loading ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {Array.from({ length: 3 }, (_, i) => `sk-${i}`).map((key) => (

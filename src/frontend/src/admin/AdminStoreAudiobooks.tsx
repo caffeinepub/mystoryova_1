@@ -98,19 +98,24 @@ export default function AdminStoreAudiobooks() {
 
   async function load() {
     if (!actor) return;
-    const [data, allSettings] = await Promise.all([
-      actor.getAudiobooks(),
-      actor.getAllSettings(),
-    ]);
-    setAudiobooks([...data].reverse());
-    const urls: Record<string, string> = {};
-    for (const s of allSettings) {
-      if (s.key.startsWith("audioFile_")) {
-        urls[s.key.replace("audioFile_", "")] = s.value;
+    try {
+      const [data, allSettings] = await Promise.all([
+        actor.getAudiobooks(),
+        actor.getAllSettings(),
+      ]);
+      setAudiobooks([...data].reverse());
+      const urls: Record<string, string> = {};
+      for (const s of allSettings) {
+        if (s.key.startsWith("audioFile_")) {
+          urls[s.key.replace("audioFile_", "")] = s.value;
+        }
       }
+      setAudioUrls(urls);
+    } catch {
+      // error ignored
+    } finally {
+      setLoading(false);
     }
-    setAudioUrls(urls);
-    setLoading(false);
   }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: load is stable
@@ -170,11 +175,13 @@ export default function AdminStoreAudiobooks() {
         value: form.audioFileUrl,
       });
       setShowForm(false);
-      await load();
     } catch {
       toast.error("Save failed");
+      setSaving(false);
+      return;
     }
     setSaving(false);
+    await load();
   }
 
   async function handleDelete() {
