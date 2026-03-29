@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useSEO } from "../hooks/useSEO";
 import {
   type CartItem,
   clearCart,
@@ -17,6 +18,11 @@ interface Props {
 
 export default function Cart({ isDark }: Props) {
   const [allItems, setAllItems] = useState<CartItem[]>([]);
+
+  useSEO({
+    title: "Cart — Mystoryova",
+    description: "Your shopping cart at Mystoryova.",
+  });
 
   useEffect(() => {
     const refresh = () => setAllItems(getCart());

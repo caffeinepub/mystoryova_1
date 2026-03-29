@@ -16,10 +16,10 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useAdminAuth } from "./useAdminAuth";
 
 interface Props {
   children: React.ReactNode;
+  onLogout: () => void;
 }
 
 const NAV_ITEMS = [
@@ -45,9 +45,8 @@ const NAV_ITEMS = [
   { label: "Settings", path: "/admin/settings", icon: Settings },
 ];
 
-export default function AdminLayout({ children }: Props) {
+export default function AdminLayout({ children, onLogout }: Props) {
   const location = useLocation();
-  const { logout } = useAdminAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [storeExpanded, setStoreExpanded] = useState(
     location.pathname.startsWith("/admin/store"),
@@ -218,7 +217,7 @@ export default function AdminLayout({ children }: Props) {
           <button
             type="button"
             data-ocid="admin.logout.button"
-            onClick={logout}
+            onClick={onLogout}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors hover:bg-red-500/10"
             style={{ color: "#666" }}
           >

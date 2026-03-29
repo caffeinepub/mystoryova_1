@@ -84,8 +84,8 @@ export default function AdminDashboard() {
     if (!actor) return;
     (async () => {
       setLoading(true);
-      const [books, blogs, subs, orders, coupons, audiobooks, merch] =
-        await Promise.all([
+      try {
+        const results = await Promise.allSettled([
           actor.getBooks(),
           actor.getBlogPosts(),
           actor.getSubscribers(),
@@ -94,26 +94,41 @@ export default function AdminDashboard() {
           actor.getAudiobooks(),
           actor.getMerchItems(),
         ]);
-      const now = BigInt(Date.now() * 1_000_000);
-      const activeCoupons = coupons.filter(
-        (c) => c.isActive && c.expiryDate > now,
-      ).length;
-      const breakdown: Record<string, number> = {};
-      for (const o of orders) {
-        breakdown[o.status] = (breakdown[o.status] ?? 0) + 1;
+        const books = results[0].status === "fulfilled" ? results[0].value : [];
+        const blogs = results[1].status === "fulfilled" ? results[1].value : [];
+        const subs = results[2].status === "fulfilled" ? results[2].value : [];
+        const orders =
+          results[3].status === "fulfilled" ? results[3].value : [];
+        const coupons =
+          results[4].status === "fulfilled" ? results[4].value : [];
+        const audiobooks =
+          results[5].status === "fulfilled" ? results[5].value : [];
+        const merch = results[6].status === "fulfilled" ? results[6].value : [];
+
+        const now = BigInt(Date.now() * 1_000_000);
+        const activeCoupons = coupons.filter(
+          (c) => c.isActive && c.expiryDate > now,
+        ).length;
+        const breakdown: Record<string, number> = {};
+        for (const o of orders) {
+          breakdown[o.status] = (breakdown[o.status] ?? 0) + 1;
+        }
+        setStats({
+          books: books.length,
+          blogs: blogs.length,
+          subscribers: subs.length,
+          orders: orders.length,
+          activeCoupons,
+          audiobooks: audiobooks.length,
+          merch: merch.length,
+        });
+        setStatusBreakdown(breakdown);
+        setRecentOrders([...orders].reverse().slice(0, 5));
+      } catch (_e) {
+        // individual failures already handled via allSettled; this catches unexpected errors
+      } finally {
+        setLoading(false);
       }
-      setStats({
-        books: books.length,
-        blogs: blogs.length,
-        subscribers: subs.length,
-        orders: orders.length,
-        activeCoupons,
-        audiobooks: audiobooks.length,
-        merch: merch.length,
-      });
-      setStatusBreakdown(breakdown);
-      setRecentOrders([...orders].reverse().slice(0, 5));
-      setLoading(false);
     })();
   }, [actor]);
 

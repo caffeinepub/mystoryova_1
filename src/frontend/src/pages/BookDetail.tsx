@@ -5,6 +5,7 @@ import BookCard from "../components/BookCard";
 import StarRating from "../components/StarRating";
 import { SEED_BOOKS } from "../data/seedBooks";
 import { useActor } from "../hooks/useActor";
+import { useSEO } from "../hooks/useSEO";
 import { isInWishlist, toggleWishlist } from "../utils/wishlist";
 
 interface Props {
@@ -27,6 +28,13 @@ export default function BookDetail({ isDark }: Props) {
   const [submitted, setSubmitted] = useState(false);
   const { actor } = useActor();
 
+  useSEO({
+    title: book ? `${book.title} \u2014 Mystoryova` : "Book \u2014 Mystoryova",
+    description: book
+      ? book.description.slice(0, 150)
+      : "Discover books by O. Chiddarwar.",
+  });
+
   useEffect(() => {
     if (!id || !actor) return;
     actor
@@ -34,7 +42,6 @@ export default function BookDetail({ isDark }: Props) {
       .then((b) => {
         setBook(b);
         setWishlisted(isInWishlist(b.id));
-        document.title = `${b.title} \u2014 Mystoryova`;
         actor
           .getBooks()
           .then((all) => {
@@ -52,7 +59,6 @@ export default function BookDetail({ isDark }: Props) {
         if (seed) {
           setBook(seed);
           setWishlisted(isInWishlist(seed.id));
-          document.title = `${seed.title} \u2014 Mystoryova`;
           setRelatedBooks(
             SEED_BOOKS.filter(
               (b) => b.id !== id && b.genre === seed.genre,
@@ -170,7 +176,9 @@ export default function BookDetail({ isDark }: Props) {
             onClick={handleWishlist}
             className="mt-4 w-full py-3 rounded-xl text-sm font-medium transition-all duration-200"
             style={{
-              border: `1px solid ${wishlisted ? "#D4AF37" : "rgba(212,175,55,0.3)"}`,
+              border: `1px solid ${
+                wishlisted ? "#D4AF37" : "rgba(212,175,55,0.3)"
+              }`,
               color: wishlisted ? "#D4AF37" : isDark ? "#888" : "#666",
               background: wishlisted ? "rgba(212,175,55,0.1)" : "transparent",
             }}
@@ -217,16 +225,13 @@ export default function BookDetail({ isDark }: Props) {
                     color: "#0a0a0a",
                   }}
                 >
-                  \ud83d\udcf1 Kindle Edition
+                  📱 Kindle Edition
                 </a>
               )}
               {paperback &&
                 paperback.__kind__ === "paperback" &&
                 paperback.paperback && (
-                  <FormatLink
-                    href={paperback.paperback}
-                    label="\ud83d\udcd6 Paperback"
-                  />
+                  <FormatLink href={paperback.paperback} label="📖 Paperback" />
                 )}
               {book.audiobookLink && (
                 <a
@@ -240,7 +245,7 @@ export default function BookDetail({ isDark }: Props) {
                     background: "transparent",
                   }}
                 >
-                  \ud83c\udfa7 Audiobook
+                  🎧 Audiobook
                 </a>
               )}
             </div>

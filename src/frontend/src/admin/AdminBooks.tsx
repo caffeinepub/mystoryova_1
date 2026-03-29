@@ -168,14 +168,16 @@ export default function AdminBooks() {
 
   async function handleDelete() {
     if (!actor || !deleteId) return;
+    const idToDelete = deleteId;
     try {
-      await actor.deleteBook(deleteId);
+      await actor.deleteBook(idToDelete);
       toast.success("Book deleted");
       setDeleteId(null);
-      await load();
     } catch {
       toast.error("Failed to delete");
+      return;
     }
+    await load();
   }
 
   async function handleSeedDefaults() {

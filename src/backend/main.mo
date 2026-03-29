@@ -8,8 +8,6 @@ import Order "mo:core/Order";
 
 import MixinStorage "blob-storage/Mixin";
 
-// Specify migration in with-clause
-
 actor {
   include MixinStorage();
 
@@ -120,6 +118,47 @@ actor {
     };
   };
 
+  // Upsert helper: remove existing key then add (mo:core Map has no put/upsert)
+  func upsertBook(key : Text, value : Book) {
+    if (books.containsKey(key)) { books.remove(key) };
+    books.add(key, value);
+  };
+
+  func upsertBlogPost(key : Text, value : BlogPost) {
+    if (blogPosts.containsKey(key)) { blogPosts.remove(key) };
+    blogPosts.add(key, value);
+  };
+
+  func upsertReviews(key : Text, value : List.List<Review>) {
+    if (reviews.containsKey(key)) { reviews.remove(key) };
+    reviews.add(key, value);
+  };
+
+  func upsertOrder(key : Text, value : Order) {
+    if (orders.containsKey(key)) { orders.remove(key) };
+    orders.add(key, value);
+  };
+
+  func upsertCoupon(key : Text, value : Coupon) {
+    if (coupons.containsKey(key)) { coupons.remove(key) };
+    coupons.add(key, value);
+  };
+
+  func upsertAudiobook(key : Text, value : Audiobook) {
+    if (audiobooks.containsKey(key)) { audiobooks.remove(key) };
+    audiobooks.add(key, value);
+  };
+
+  func upsertMerchItem(key : Text, value : MerchItem) {
+    if (merchItems.containsKey(key)) { merchItems.remove(key) };
+    merchItems.add(key, value);
+  };
+
+  func upsertSetting(key : Text, value : Setting) {
+    if (settings.containsKey(key)) { settings.remove(key) };
+    settings.add(key, value);
+  };
+
   // Persistent Data Structures
   let books = Map.empty<Text, Book>();
   let blogPosts = Map.empty<Text, BlogPost>();
@@ -146,17 +185,14 @@ actor {
   };
 
   public shared ({ caller }) func addBook(book : Book) : async () {
-    books.add(book.id, book);
+    upsertBook(book.id, book);
   };
 
   public shared ({ caller }) func updateBook(book : Book) : async () {
-    if (not books.containsKey(book.id)) {
-      Runtime.trap("Book not found");
-    };
-    books.add(book.id, book);
+    upsertBook(book.id, book);
   };
 
-  public query ({ caller }) func deleteBook(id : Text) : async () {
+  public shared ({ caller }) func deleteBook(id : Text) : async () {
     books.remove(id);
   };
 
@@ -173,17 +209,14 @@ actor {
   };
 
   public shared ({ caller }) func addBlogPost(post : BlogPost) : async () {
-    blogPosts.add(post.id, post);
+    upsertBlogPost(post.id, post);
   };
 
   public shared ({ caller }) func updateBlogPost(post : BlogPost) : async () {
-    if (not blogPosts.containsKey(post.id)) {
-      Runtime.trap("Post not found");
-    };
-    blogPosts.add(post.id, post);
+    upsertBlogPost(post.id, post);
   };
 
-  public query ({ caller }) func deleteBlogPost(id : Text) : async () {
+  public shared ({ caller }) func deleteBlogPost(id : Text) : async () {
     blogPosts.remove(id);
   };
 
@@ -219,7 +252,7 @@ actor {
       case (?list) { list };
     };
     existingReviews.add(review);
-    reviews.add(review.bookId, existingReviews);
+    upsertReviews(review.bookId, existingReviews);
   };
 
   public query func getReviews(bookId : Text) : async [Review] {
@@ -231,7 +264,7 @@ actor {
 
   // Order Management
   public shared ({ caller }) func createOrder(order : Order) : async () {
-    orders.add(order.id, order);
+    upsertOrder(order.id, order);
   };
 
   public query func getOrders() : async [Order] {
@@ -248,7 +281,7 @@ actor {
       case (?o) { o };
     };
     let updatedOrder = { order with status };
-    orders.add(id, updatedOrder);
+    upsertOrder(id, updatedOrder);
   };
 
   public shared ({ caller }) func deleteOrder(id : Text) : async () {
@@ -257,7 +290,7 @@ actor {
 
   // Coupon Codes
   public shared ({ caller }) func createCoupon(coupon : Coupon) : async () {
-    coupons.add(coupon.code, coupon);
+    upsertCoupon(coupon.code, coupon);
   };
 
   public query func getCoupons() : async [Coupon] {
@@ -281,7 +314,7 @@ actor {
       coupon with
       usageCount = coupon.usageCount + 1;
     };
-    coupons.add(code, updatedCoupon);
+    upsertCoupon(code, updatedCoupon);
   };
 
   public query func validateCoupon(code : Text) : async ?Coupon {
@@ -298,7 +331,7 @@ actor {
 
   // Audiobook Management
   public shared ({ caller }) func createAudiobook(audiobook : Audiobook) : async () {
-    audiobooks.add(audiobook.id, audiobook);
+    upsertAudiobook(audiobook.id, audiobook);
   };
 
   public query func getAudiobooks() : async [Audiobook] {
@@ -310,10 +343,7 @@ actor {
   };
 
   public shared ({ caller }) func updateAudiobook(audiobook : Audiobook) : async () {
-    if (not audiobooks.containsKey(audiobook.id)) {
-      Runtime.trap("Audiobook not found");
-    };
-    audiobooks.add(audiobook.id, audiobook);
+    upsertAudiobook(audiobook.id, audiobook);
   };
 
   public shared ({ caller }) func deleteAudiobook(id : Text) : async () {
@@ -322,7 +352,7 @@ actor {
 
   // Merch Management
   public shared ({ caller }) func createMerchItem(merchItem : MerchItem) : async () {
-    merchItems.add(merchItem.id, merchItem);
+    upsertMerchItem(merchItem.id, merchItem);
   };
 
   public query func getMerchItems() : async [MerchItem] {
@@ -334,10 +364,7 @@ actor {
   };
 
   public shared ({ caller }) func updateMerchItem(merchItem : MerchItem) : async () {
-    if (not merchItems.containsKey(merchItem.id)) {
-      Runtime.trap("Merch item not found");
-    };
-    merchItems.add(merchItem.id, merchItem);
+    upsertMerchItem(merchItem.id, merchItem);
   };
 
   public shared ({ caller }) func deleteMerchItem(id : Text) : async () {
@@ -350,7 +377,7 @@ actor {
   };
 
   public shared ({ caller }) func updateSetting(setting : Setting) : async () {
-    settings.add(setting.key, setting);
+    upsertSetting(setting.key, setting);
   };
 
   public query func getAllSettings() : async [Setting] {

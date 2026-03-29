@@ -1,13 +1,15 @@
-import { useEffect } from "react";
+import { useSEO } from "../hooks/useSEO";
 
 interface Props {
   isDark: boolean;
 }
 
 export default function PrivacyPolicy({ isDark }: Props) {
-  useEffect(() => {
-    document.title = "Privacy Policy — Mystoryova";
-  }, []);
+  useSEO({
+    title: "Privacy Policy — Mystoryova",
+    description: "Privacy Policy for Mystoryova.",
+  });
+
   const h2 = {
     fontFamily: "Playfair Display, serif",
     color: isDark ? "#D4AF37" : "#8B6914",

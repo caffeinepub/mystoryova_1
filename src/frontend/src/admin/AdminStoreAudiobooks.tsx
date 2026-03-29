@@ -179,16 +179,18 @@ export default function AdminStoreAudiobooks() {
 
   async function handleDelete() {
     if (!actor || !deleteId) return;
+    const idToDelete = deleteId;
     try {
-      await actor.deleteAudiobook(deleteId);
+      await actor.deleteAudiobook(idToDelete);
       // Clear audio setting
-      await actor.updateSetting({ key: `audioFile_${deleteId}`, value: "" });
+      await actor.updateSetting({ key: `audioFile_${idToDelete}`, value: "" });
       toast.success("Deleted");
       setDeleteId(null);
-      await load();
     } catch {
       toast.error("Delete failed");
+      return;
     }
+    await load();
   }
 
   async function seedDefaults() {

@@ -1,13 +1,15 @@
-import { useEffect } from "react";
+import { useSEO } from "../hooks/useSEO";
 
 interface Props {
   isDark: boolean;
 }
 
 export default function ReturnPolicy({ isDark }: Props) {
-  useEffect(() => {
-    document.title = "Return Policy — Mystoryova";
-  }, []);
+  useSEO({
+    title: "Return Policy — Mystoryova",
+    description: "Return and refund policy for Mystoryova.",
+  });
+
   const h2 = {
     fontFamily: "Playfair Display, serif",
     color: isDark ? "#D4AF37" : "#8B6914",

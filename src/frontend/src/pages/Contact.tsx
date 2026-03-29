@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useSEO } from "../hooks/useSEO";
 
 interface Props {
   isDark: boolean;
@@ -12,9 +13,10 @@ export default function Contact({ isDark }: Props) {
     message: "",
   });
 
-  useEffect(() => {
-    document.title = "Contact \u2014 Mystoryova";
-  }, []);
+  useSEO({
+    title: "Contact — Mystoryova",
+    description: "Get in touch with the Mystoryova team.",
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +78,7 @@ export default function Contact({ isDark }: Props) {
               </label>
               <input
                 id="contact-name"
+                data-ocid="contact.input"
                 type="text"
                 value={form.name}
                 onChange={(e) =>
@@ -96,6 +99,7 @@ export default function Contact({ isDark }: Props) {
               </label>
               <input
                 id="contact-email"
+                data-ocid="contact.input"
                 type="email"
                 value={form.email}
                 onChange={(e) =>
@@ -117,6 +121,7 @@ export default function Contact({ isDark }: Props) {
             </label>
             <input
               id="contact-subject"
+              data-ocid="contact.input"
               type="text"
               value={form.subject}
               onChange={(e) =>
@@ -137,6 +142,7 @@ export default function Contact({ isDark }: Props) {
             </label>
             <textarea
               id="contact-message"
+              data-ocid="contact.textarea"
               value={form.message}
               onChange={(e) =>
                 setForm((p) => ({ ...p, message: e.target.value }))
@@ -149,6 +155,7 @@ export default function Contact({ isDark }: Props) {
           </div>
           <button
             type="submit"
+            data-ocid="contact.submit_button"
             className="w-full py-3 rounded-xl text-sm font-semibold transition-all duration-200"
             style={{
               background: "linear-gradient(135deg, #D4AF37, #F0D060)",

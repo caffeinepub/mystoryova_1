@@ -5,6 +5,8 @@ import BookCard from "../components/BookCard";
 import NewsletterSignup from "../components/NewsletterSignup";
 import { SEED_BOOKS } from "../data/seedBooks";
 import { useActor } from "../hooks/useActor";
+import { useSEO } from "../hooks/useSEO";
+import { useScrollReveal } from "../hooks/useScrollReveal";
 
 interface Props {
   isDark: boolean;
@@ -83,12 +85,17 @@ function ParticleBackground() {
 }
 
 export default function Home({ isDark }: Props) {
-  const [books, setBooks] = useState<Book[]>([]);
+  const [books, setBooks] = useState<Book[]>(SEED_BOOKS);
   const { actor } = useActor();
+  const { ref: featuredRef, isVisible: featuredVisible } = useScrollReveal();
+  const { ref: newsletterRef, isVisible: newsletterVisible } =
+    useScrollReveal();
 
-  useEffect(() => {
-    document.title = "Mystoryova \u2014 Stories That Stay With You";
-  }, []);
+  useSEO({
+    title: "Mystoryova — Stories That Stay With You",
+    description:
+      "Discover literary worlds by O. Chiddarwar. Premium audiobooks, signed merch, and stories that stay with you.",
+  });
 
   useEffect(() => {
     if (!actor) return;
@@ -100,7 +107,11 @@ export default function Home({ isDark }: Props) {
       .catch(() => setBooks(SEED_BOOKS));
   }, [actor]);
 
-  const featuredBooks = books.filter((b) => b.featured).slice(0, 4);
+  const featuredBooks = (
+    books.filter((b) => b.featured).length > 0
+      ? books.filter((b) => b.featured)
+      : books
+  ).slice(0, 4);
 
   return (
     <div>
@@ -164,61 +175,71 @@ export default function Home({ isDark }: Props) {
 
       {featuredBooks.length > 0 && (
         <section className="py-20 px-4 max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <div
-              className="text-xs tracking-[0.3em] uppercase mb-3"
-              style={{ color: "#D4AF37" }}
-            >
-              Featured
-            </div>
-            <h2
-              className="text-3xl sm:text-4xl font-bold"
-              style={{
-                fontFamily: "Playfair Display, serif",
-                color: isDark ? "#f0ead6" : "#1a1a1a",
-              }}
-            >
-              Latest from O. Chiddarwar
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {featuredBooks.map((book) => (
-              <BookCard key={book.id} book={book} isDark={isDark} />
-            ))}
-          </div>
-          <div className="text-center mt-10">
-            <Link
-              to="/books"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-medium transition-all duration-200"
-              style={{
-                border: "1px solid rgba(212,175,55,0.4)",
-                color: "#D4AF37",
-              }}
-            >
-              View All Books
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                role="img"
-                aria-label="Arrow right"
+          <div
+            ref={featuredRef}
+            className={`scroll-reveal${featuredVisible ? " visible" : ""}`}
+          >
+            <div className="text-center mb-12">
+              <div
+                className="text-xs tracking-[0.3em] uppercase mb-3"
+                style={{ color: "#D4AF37" }}
               >
-                <title>Arrow right</title>
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9 5l7 7-7 7"
-                />
-              </svg>
-            </Link>
+                Featured
+              </div>
+              <h2
+                className="text-3xl sm:text-4xl font-bold"
+                style={{
+                  fontFamily: "Playfair Display, serif",
+                  color: isDark ? "#f0ead6" : "#1a1a1a",
+                }}
+              >
+                Latest from O. Chiddarwar
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {featuredBooks.map((book) => (
+                <BookCard key={book.id} book={book} isDark={isDark} />
+              ))}
+            </div>
+            <div className="text-center mt-10">
+              <Link
+                to="/books"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-medium transition-all duration-200"
+                style={{
+                  border: "1px solid rgba(212,175,55,0.4)",
+                  color: "#D4AF37",
+                }}
+              >
+                View All Books
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                  role="img"
+                  aria-label="Arrow right"
+                >
+                  <title>Arrow right</title>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
+              </Link>
+            </div>
           </div>
         </section>
       )}
 
       <section className="py-16 px-4">
-        <div className="max-w-2xl mx-auto">
+        <div
+          ref={newsletterRef}
+          className={`max-w-2xl mx-auto scroll-reveal${
+            newsletterVisible ? " visible" : ""
+          }`}
+        >
           <NewsletterSignup isDark={isDark} />
         </div>
       </section>

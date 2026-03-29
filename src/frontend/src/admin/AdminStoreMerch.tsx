@@ -37,6 +37,10 @@ const CATEGORIES = [
   "Other",
 ];
 
+const SIZES = ["XS", "S", "M", "L", "XL", "XXL"] as const;
+type SizeKey = (typeof SIZES)[number];
+type SizeStock = Record<SizeKey, string>;
+
 interface FormState {
   id: string;
   name: string;
@@ -48,7 +52,17 @@ interface FormState {
   razorpayUrl: string;
   isActive: boolean;
   freeShipping: boolean;
+  sizeStock: SizeStock;
 }
+
+const EMPTY_SIZE_STOCK: SizeStock = {
+  XS: "",
+  S: "",
+  M: "",
+  L: "",
+  XL: "",
+  XXL: "",
+};
 
 const EMPTY_FORM: FormState = {
   id: "",
@@ -61,6 +75,7 @@ const EMPTY_FORM: FormState = {
   razorpayUrl: "",
   isActive: true,
   freeShipping: false,
+  sizeStock: { ...EMPTY_SIZE_STOCK },
 };
 
 function formToMerch(f: FormState): MerchItem {
@@ -77,7 +92,12 @@ function formToMerch(f: FormState): MerchItem {
   };
 }
 
-function merchToForm(m: MerchItem, freeShipping: boolean): FormState {
+function merchToForm(
+  m: MerchItem,
+  freeShipping: boolean,
+  sizeStockMap: Record<string, Record<string, number>>,
+): FormState {
+  const ss = sizeStockMap[m.id];
   return {
     id: m.id,
     name: m.name,
@@ -89,6 +109,11 @@ function merchToForm(m: MerchItem, freeShipping: boolean): FormState {
     razorpayUrl: m.razorpayUrl,
     isActive: m.isActive,
     freeShipping,
+    sizeStock: ss
+      ? (Object.fromEntries(
+          Object.entries(ss).map(([k, v]) => [k, String(v)]),
+        ) as SizeStock)
+      : { ...EMPTY_SIZE_STOCK },
   };
 }
 
@@ -97,6 +122,9 @@ export default function AdminStoreMerch() {
   const [items, setItems] = useState<MerchItem[]>([]);
   const [freeShippingMap, setFreeShippingMap] = useState<
     Record<string, boolean>
+  >({});
+  const [sizeStockMap, setSizeStockMap] = useState<
+    Record<string, Record<string, number>>
   >({});
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -112,13 +140,22 @@ export default function AdminStoreMerch() {
       actor.getAllSettings(),
     ]);
     setItems([...data].reverse());
-    const map: Record<string, boolean> = {};
+    const shippingMap: Record<string, boolean> = {};
+    const ssMap: Record<string, Record<string, number>> = {};
     for (const s of allSettings) {
       if (s.key.startsWith("shippingFree_")) {
-        map[s.key.replace("shippingFree_", "")] = s.value === "true";
+        shippingMap[s.key.replace("shippingFree_", "")] = s.value === "true";
+      } else if (s.key.startsWith("sizeStock_")) {
+        const id = s.key.replace("sizeStock_", "");
+        try {
+          ssMap[id] = JSON.parse(s.value);
+        } catch {
+          // ignore
+        }
       }
     }
-    setFreeShippingMap(map);
+    setFreeShippingMap(shippingMap);
+    setSizeStockMap(ssMap);
     setLoading(false);
   }
 
@@ -134,7 +171,7 @@ export default function AdminStoreMerch() {
   }
   function openEdit(m: MerchItem) {
     setEditItem(m);
-    setForm(merchToForm(m, freeShippingMap[m.id] ?? false));
+    setForm(merchToForm(m, freeShippingMap[m.id] ?? false, sizeStockMap));
     setShowForm(true);
   }
 
@@ -159,6 +196,16 @@ export default function AdminStoreMerch() {
         key: `shippingFree_${item.id}`,
         value: form.freeShipping ? "true" : "false",
       });
+      // Save size stock if clothing
+      if (form.category === "Clothing") {
+        const numericStock = Object.fromEntries(
+          Object.entries(form.sizeStock).map(([k, v]) => [k, Number(v) || 0]),
+        );
+        await actor.updateSetting({
+          key: `sizeStock_${item.id}`,
+          value: JSON.stringify(numericStock),
+        });
+      }
       setShowForm(false);
       await load();
     } catch {
@@ -169,15 +216,21 @@ export default function AdminStoreMerch() {
 
   async function handleDelete() {
     if (!actor || !deleteId) return;
+    const idToDelete = deleteId;
     try {
-      await actor.deleteMerchItem(deleteId);
-      await actor.updateSetting({ key: `shippingFree_${deleteId}`, value: "" });
+      await actor.deleteMerchItem(idToDelete);
+      await actor.updateSetting({
+        key: `shippingFree_${idToDelete}`,
+        value: "",
+      });
+      await actor.updateSetting({ key: `sizeStock_${idToDelete}`, value: "" });
       toast.success("Deleted");
       setDeleteId(null);
-      await load();
     } catch {
       toast.error("Delete failed");
+      return;
     }
+    await load();
   }
 
   async function seedDefaults() {
@@ -281,6 +334,7 @@ export default function AdminStoreMerch() {
                   {[
                     "Name",
                     "Category",
+                    "Sizes",
                     "Shipping",
                     "Price INR",
                     "Price USD",
@@ -328,6 +382,23 @@ export default function AdminStoreMerch() {
                     </td>
                     <td className="py-3 px-4" style={{ color: "#888" }}>
                       {item.category}
+                    </td>
+                    <td className="py-3 px-4">
+                      {item.category === "Clothing" && sizeStockMap[item.id] ? (
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full"
+                          style={{
+                            background: "rgba(212,175,55,0.1)",
+                            color: "#D4AF37",
+                          }}
+                        >
+                          {SIZES.filter(
+                            (s) => (sizeStockMap[item.id]?.[s] ?? 0) > 0,
+                          ).join(", ") || "—"}
+                        </span>
+                      ) : (
+                        <span style={{ color: "#444" }}>—</span>
+                      )}
                     </td>
                     <td className="py-3 px-4">
                       <span
@@ -553,6 +624,61 @@ export default function AdminStoreMerch() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Size Stock — only for Clothing */}
+              {form.category === "Clothing" && (
+                <div
+                  className="col-span-2 rounded-xl p-4 flex flex-col gap-3"
+                  style={{
+                    background: "rgba(212,175,55,0.04)",
+                    border: "1px solid rgba(212,175,55,0.15)",
+                  }}
+                >
+                  <Label style={{ color: "#D4AF37", fontSize: "0.75rem" }}>
+                    📏 Size Stock (units available per size)
+                  </Label>
+                  <div className="grid grid-cols-6 gap-2">
+                    {SIZES.map((size) => (
+                      <div
+                        key={size}
+                        className="flex flex-col gap-1 items-center"
+                      >
+                        <Label
+                          style={{
+                            color: "#888",
+                            fontSize: "0.7rem",
+                            textAlign: "center",
+                          }}
+                        >
+                          {size}
+                        </Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={form.sizeStock[size]}
+                          onChange={(e) =>
+                            setForm((p) => ({
+                              ...p,
+                              sizeStock: {
+                                ...p.sizeStock,
+                                [size]: e.target.value,
+                              },
+                            }))
+                          }
+                          placeholder="0"
+                          style={{
+                            ...inputStyle,
+                            textAlign: "center",
+                            padding: "4px 4px",
+                            fontSize: "0.8rem",
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="col-span-2 flex flex-col gap-1">
                 <Label style={{ color: "#888", fontSize: "0.75rem" }}>
                   Description

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import type { BlogPost } from "../backend.d";
 import BlogCard from "../components/BlogCard";
 import { useActor } from "../hooks/useActor";
+import { useSEO } from "../hooks/useSEO";
+import { useScrollReveal } from "../hooks/useScrollReveal";
 
 interface Props {
   isDark: boolean;
@@ -34,7 +36,7 @@ const SEED_POSTS: BlogPost[] = [
     id: "post-3",
     title: "Where Do Ideas Come From?",
     excerpt:
-      "The mysterious alchemy of creativity \u2014 how a chance encounter, a dream, or a single word can spark an entire novel.",
+      "The mysterious alchemy of creativity — how a chance encounter, a dream, or a single word can spark an entire novel.",
     content: "Ideas are everywhere...",
     category: "Ideas",
     coverImageUrl: "",
@@ -47,10 +49,12 @@ export default function Blog({ isDark }: Props) {
   const [category, setCategory] = useState("All");
   const [loading, setLoading] = useState(true);
   const { actor } = useActor();
+  const { ref: gridRef, isVisible: gridVisible } = useScrollReveal();
 
-  useEffect(() => {
-    document.title = "Blog \u2014 Mystoryova";
-  }, []);
+  useSEO({
+    title: "Blog — Mystoryova",
+    description: "Stories, insights, and writing from O. Chiddarwar.",
+  });
 
   useEffect(() => {
     if (!actor) return;
@@ -98,7 +102,9 @@ export default function Blog({ isDark }: Props) {
                   ? "linear-gradient(135deg, #D4AF37, #F0D060)"
                   : "transparent",
               color: category === cat ? "#0a0a0a" : isDark ? "#888" : "#666",
-              border: `1px solid ${category === cat ? "#D4AF37" : "rgba(212,175,55,0.2)"}`,
+              border: `1px solid ${
+                category === cat ? "#D4AF37" : "rgba(212,175,55,0.2)"
+              }`,
             }}
           >
             {cat}
@@ -106,8 +112,14 @@ export default function Blog({ isDark }: Props) {
         ))}
       </div>
       {loading ? (
-        <div className="text-center py-20" style={{ color: "#D4AF37" }}>
-          Loading...
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 3 }, (_, i) => `skeleton-${i}`).map((key) => (
+            <div
+              key={key}
+              className="rounded-xl h-48 skeleton-shimmer"
+              style={{ border: "1px solid rgba(212,175,55,0.1)" }}
+            />
+          ))}
         </div>
       ) : filtered.length === 0 ? (
         <div
@@ -117,7 +129,12 @@ export default function Blog({ isDark }: Props) {
           No posts in this category yet.
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div
+          ref={gridRef}
+          className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 scroll-reveal${
+            gridVisible ? " visible" : ""
+          }`}
+        >
           {filtered.map((post) => (
             <BlogCard key={post.id} post={post} isDark={isDark} />
           ))}

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { BlogPost } from "../backend.d";
 
@@ -13,6 +14,8 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export default function BlogCard({ post, isDark }: Props) {
+  const [hovered, setHovered] = useState(false);
+
   const dateStr = new Date(
     Number(post.publishedAt) / 1_000_000,
   ).toLocaleDateString("en-US", {
@@ -25,22 +28,23 @@ export default function BlogCard({ post, isDark }: Props) {
   return (
     <Link
       to={`/blog/${post.id}`}
-      className="group block rounded-xl overflow-hidden transition-all duration-300 hover:-translate-y-1"
+      className="group block rounded-xl overflow-hidden"
       style={{
         background: isDark ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.9)",
-        border: "1px solid rgba(212,175,55,0.12)",
-        boxShadow: isDark
-          ? "0 4px 24px rgba(0,0,0,0.4)"
-          : "0 4px 24px rgba(0,0,0,0.1)",
+        border: hovered
+          ? "1px solid rgba(212,175,55,0.5)"
+          : "1px solid rgba(212,175,55,0.15)",
+        boxShadow: hovered
+          ? "0 12px 40px rgba(212,175,55,0.25)"
+          : isDark
+            ? "0 2px 12px rgba(0,0,0,0.3)"
+            : "0 2px 12px rgba(0,0,0,0.1)",
+        transform: hovered ? "translateY(-6px)" : "translateY(0)",
+        transition:
+          "transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease",
       }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.borderColor =
-          "rgba(212,175,55,0.5)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.borderColor =
-          "rgba(212,175,55,0.12)";
-      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       {post.coverImageUrl && (
         <div className="h-40 overflow-hidden">

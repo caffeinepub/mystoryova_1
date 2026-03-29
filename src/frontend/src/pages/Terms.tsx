@@ -1,14 +1,16 @@
-import { useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useSEO } from "../hooks/useSEO";
 
 interface Props {
   isDark: boolean;
 }
 
 export default function Terms({ isDark }: Props) {
-  useEffect(() => {
-    document.title = "Terms of Service — Mystoryova";
-  }, []);
+  useSEO({
+    title: "Terms of Service — Mystoryova",
+    description: "Terms of Service for Mystoryova.",
+  });
+
   const h2 = {
     fontFamily: "Playfair Display, serif",
     color: isDark ? "#D4AF37" : "#8B6914",

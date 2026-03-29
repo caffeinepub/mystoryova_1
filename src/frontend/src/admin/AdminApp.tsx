@@ -15,11 +15,15 @@ import AdminStoreMerch from "./AdminStoreMerch";
 import { useAdminAuth } from "./useAdminAuth";
 
 export default function AdminApp() {
-  const { isLoggedIn, isLoading } = useAdminAuth();
+  const { isLoggedIn, isLoading, logout } = useAdminAuth();
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
 
-  // Use the auth hook state but allow local override after login
   const isAuthenticated = loggedIn !== null ? loggedIn : isLoggedIn;
+
+  function handleLogout() {
+    logout();
+    setLoggedIn(false);
+  }
 
   if (isLoading) {
     return (
@@ -51,7 +55,7 @@ export default function AdminApp() {
   }
 
   return (
-    <AdminLayout>
+    <AdminLayout onLogout={handleLogout}>
       <Routes>
         <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="/dashboard" element={<AdminDashboard />} />

@@ -11,6 +11,7 @@ import {
   openRazorpayCheckout,
 } from "../config/razorpayLinks";
 import { useActor } from "../hooks/useActor";
+import { useSEO } from "../hooks/useSEO";
 import { type CartItem, getCart } from "../utils/cart";
 
 type Currency = "INR" | "USD";
@@ -27,6 +28,10 @@ interface Props {
 
 export default function Checkout({ isDark }: Props) {
   const { actor } = useActor();
+  useSEO({
+    title: "Checkout — Mystoryova",
+    description: "Complete your order at Mystoryova.",
+  });
   const [allItems, setAllItems] = useState<CartItem[]>([]);
   const [paidIds, setPaidIds] = useState<Set<string>>(new Set());
   const [currency, setCurrency] = useState<Currency>("INR");

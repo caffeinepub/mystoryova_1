@@ -3,6 +3,7 @@ import type { Book } from "../backend.d";
 import BookCard from "../components/BookCard";
 import { SEED_BOOKS } from "../data/seedBooks";
 import { useActor } from "../hooks/useActor";
+import { useSEO } from "../hooks/useSEO";
 
 interface Props {
   isDark: boolean;
@@ -16,9 +17,11 @@ export default function Books({ isDark }: Props) {
   const [format, setFormat] = useState("All");
   const { actor } = useActor();
 
-  useEffect(() => {
-    document.title = "Books — Mystoryova";
-  }, []);
+  useSEO({
+    title: "Books — Mystoryova",
+    description:
+      "Browse all books by O. Chiddarwar — epic fantasies, heartfelt romances, and more.",
+  });
 
   useEffect(() => {
     if (!actor) return;
@@ -131,8 +134,14 @@ export default function Books({ isDark }: Props) {
       </div>
 
       {loading ? (
-        <div className="text-center py-20" style={{ color: "#D4AF37" }}>
-          Loading books...
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          {Array.from({ length: 4 }, (_, i) => `skeleton-${i}`).map((key) => (
+            <div
+              key={key}
+              className="rounded-xl h-64 skeleton-shimmer"
+              style={{ border: "1px solid rgba(212,175,55,0.1)" }}
+            />
+          ))}
         </div>
       ) : filtered.length === 0 ? (
         <div

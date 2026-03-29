@@ -45,17 +45,20 @@ export default function BookCard({ book, isDark }: Props) {
   return (
     <Link
       to={`/books/${book.id}`}
-      className="group block rounded-xl overflow-hidden transition-all duration-300 hover:-translate-y-1"
+      className="group block rounded-xl overflow-hidden"
       style={{
         background: isDark ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.9)",
         border: hovered
           ? "1px solid rgba(212,175,55,0.5)"
-          : "1px solid rgba(212,175,55,0.12)",
+          : "1px solid rgba(212,175,55,0.15)",
         boxShadow: hovered
-          ? "0 8px 32px rgba(212,175,55,0.15)"
+          ? "0 12px 40px rgba(212,175,55,0.25)"
           : isDark
-            ? "0 4px 24px rgba(0,0,0,0.4)"
-            : "0 4px 24px rgba(0,0,0,0.1)",
+            ? "0 2px 12px rgba(0,0,0,0.3)"
+            : "0 2px 12px rgba(0,0,0,0.1)",
+        transform: hovered ? "translateY(-6px)" : "translateY(0)",
+        transition:
+          "transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease",
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -100,7 +103,9 @@ export default function BookCard({ book, isDark }: Props) {
           className="absolute top-2 right-2 p-1.5 rounded-full transition-all duration-200"
           style={{
             background: "rgba(0,0,0,0.5)",
-            border: `1px solid ${wishlisted ? "#D4AF37" : "rgba(212,175,55,0.3)"}`,
+            border: `1px solid ${
+              wishlisted ? "#D4AF37" : "rgba(212,175,55,0.3)"
+            }`,
           }}
           aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
         >
