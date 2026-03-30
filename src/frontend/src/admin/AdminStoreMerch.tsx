@@ -21,7 +21,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Edit2, Plus, Trash2, X } from "lucide-react";
+import { Edit2, Plus, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { MerchItem } from "../backend.d";
@@ -47,6 +47,21 @@ interface ColorEntry {
   stock: string;
 }
 
+export interface ColorVariantImages {
+  colorName: string;
+  colorHex: string;
+  stock: number;
+  frontImage: string;
+  backImage: string;
+  lifestyleImage: string;
+}
+
+export interface ProductImages {
+  primaryImage: string;
+  alternateImage: string;
+  lifestyleImage?: string;
+}
+
 interface FormState {
   id: string;
   name: string;
@@ -60,6 +75,8 @@ interface FormState {
   freeShipping: boolean;
   sizeStock: SizeStock;
   colorStock: ColorEntry[];
+  colorImages: ColorVariantImages[];
+  productImages: ProductImages;
 }
 
 const EMPTY_SIZE_STOCK: SizeStock = {
@@ -69,6 +86,12 @@ const EMPTY_SIZE_STOCK: SizeStock = {
   L: "",
   XL: "",
   XXL: "",
+};
+
+const EMPTY_PRODUCT_IMAGES: ProductImages = {
+  primaryImage: "",
+  alternateImage: "",
+  lifestyleImage: "",
 };
 
 const EMPTY_FORM: FormState = {
@@ -84,6 +107,8 @@ const EMPTY_FORM: FormState = {
   freeShipping: false,
   sizeStock: { ...EMPTY_SIZE_STOCK },
   colorStock: [],
+  colorImages: [],
+  productImages: { ...EMPTY_PRODUCT_IMAGES },
 };
 
 function icErrMsg(err: unknown): string {
@@ -108,6 +133,31 @@ function formToMerch(f: FormState): MerchItem {
   };
 }
 
+function compressImage(file: File): Promise<string> {
+  // Cap at 300px to keep each base64 image well under 100KB (ICP 2MB message limit)
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 300;
+        const scaleW = img.width > maxDim ? maxDim / img.width : 1;
+        const scaleH = img.height > maxDim ? maxDim / img.height : 1;
+        const scale = Math.min(scaleW, scaleH);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas
+          .getContext("2d")
+          ?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.4));
+      };
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function merchToForm(
   m: MerchItem,
   freeShipping: boolean,
@@ -116,9 +166,13 @@ function merchToForm(
     string,
     Array<{ name: string; hex: string; stock: number }>
   >,
+  colorImagesMap: Record<string, ColorVariantImages[]>,
+  productImagesMap: Record<string, ProductImages>,
 ): FormState {
   const ss = sizeStockMap[m.id];
   const cs = colorStockMap[m.id] ?? [];
+  const ci = colorImagesMap[m.id] ?? [];
+  const pi = productImagesMap[m.id] ?? { ...EMPTY_PRODUCT_IMAGES };
   return {
     id: m.id,
     name: m.name,
@@ -136,6 +190,8 @@ function merchToForm(
         ) as SizeStock)
       : { ...EMPTY_SIZE_STOCK },
     colorStock: cs.map((c) => ({ ...c, stock: String(c.stock) })),
+    colorImages: ci,
+    productImages: pi,
   };
 }
 
@@ -144,6 +200,82 @@ const inputStyle = {
   border: "1px solid rgba(212,175,55,0.2)",
   color: "#f0ead6",
 };
+
+// Image upload slot component
+function ImageSlot({
+  label,
+  required,
+  value,
+  onChange,
+}: {
+  label: string;
+  required?: boolean;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label style={{ color: "#888", fontSize: "0.7rem" }}>
+        {label}
+        {required && <span style={{ color: "#EF4444" }}> *</span>}
+      </Label>
+      <div
+        className="relative rounded-lg overflow-hidden"
+        style={{
+          border: `1px solid ${value ? "rgba(212,175,55,0.4)" : "rgba(212,175,55,0.15)"}`,
+          background: "rgba(255,255,255,0.03)",
+          aspectRatio: "1",
+        }}
+      >
+        {value ? (
+          <>
+            <img
+              src={value}
+              alt={label}
+              className="w-full h-full object-cover"
+            />
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="absolute top-1 right-1 rounded-full p-0.5"
+              style={{ background: "rgba(0,0,0,0.7)", color: "#EF4444" }}
+            >
+              <X size={12} />
+            </button>
+          </>
+        ) : (
+          <label
+            className="flex flex-col items-center justify-center w-full h-full cursor-pointer gap-1"
+            style={{ color: "#555" }}
+          >
+            <Upload size={16} />
+            <span
+              style={{
+                fontSize: "0.65rem",
+                textAlign: "center",
+                padding: "0 4px",
+              }}
+            >
+              Upload
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const compressed = await compressImage(file);
+                onChange(compressed);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminStoreMerch() {
   const { actor } = useActor();
@@ -157,12 +289,19 @@ export default function AdminStoreMerch() {
   const [colorStockMap, setColorStockMap] = useState<
     Record<string, Array<{ name: string; hex: string; stock: number }>>
   >({});
+  const [colorImagesMap, setColorImagesMap] = useState<
+    Record<string, ColorVariantImages[]>
+  >({});
+  const [productImagesMap, setProductImagesMap] = useState<
+    Record<string, ProductImages>
+  >({});
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState<MerchItem | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [activeColorImageIdx, setActiveColorImageIdx] = useState(0);
 
   async function load() {
     if (!actor) return;
@@ -178,6 +317,8 @@ export default function AdminStoreMerch() {
         string,
         Array<{ name: string; hex: string; stock: number }>
       > = {};
+      const ciMap: Record<string, ColorVariantImages[]> = {};
+      const piMap: Record<string, ProductImages> = {};
       for (const s of allSettings) {
         if (s.key.startsWith("shippingFree_")) {
           shippingMap[s.key.replace("shippingFree_", "")] = s.value === "true";
@@ -186,20 +327,55 @@ export default function AdminStoreMerch() {
           try {
             ssMap[id] = JSON.parse(s.value);
           } catch {
-            // ignore
+            /* ignore */
           }
         } else if (s.key.startsWith("colorStock_")) {
           const id = s.key.replace("colorStock_", "");
           try {
             csMap[id] = JSON.parse(s.value);
           } catch {
-            // ignore
+            /* ignore */
+          }
+        } else if (s.key.startsWith("colorImages_")) {
+          // Legacy single-blob format — still parse for backward compat
+          const id = s.key.replace("colorImages_", "");
+          if (!ciMap[id]) {
+            try {
+              ciMap[id] = JSON.parse(s.value);
+            } catch {
+              /* ignore */
+            }
+          }
+        } else if (s.key.startsWith("colorImg_")) {
+          // New per-color format: colorImg_{itemId}_{colorIdx}
+          const withoutPrefix = s.key.replace("colorImg_", "");
+          const lastUnderscore = withoutPrefix.lastIndexOf("_");
+          const id = withoutPrefix.substring(0, lastUnderscore);
+          const idx = Number.parseInt(
+            withoutPrefix.substring(lastUnderscore + 1),
+          );
+          if (!Number.isNaN(idx) && id) {
+            if (!ciMap[id]) ciMap[id] = [];
+            try {
+              ciMap[id][idx] = JSON.parse(s.value);
+            } catch {
+              /* ignore */
+            }
+          }
+        } else if (s.key.startsWith("productImages_")) {
+          const id = s.key.replace("productImages_", "");
+          try {
+            piMap[id] = JSON.parse(s.value);
+          } catch {
+            /* ignore */
           }
         }
       }
       setFreeShippingMap(shippingMap);
       setSizeStockMap(ssMap);
       setColorStockMap(csMap);
+      setColorImagesMap(ciMap);
+      setProductImagesMap(piMap);
     } catch {
       // error ignored
     } finally {
@@ -215,8 +391,10 @@ export default function AdminStoreMerch() {
   function openAdd() {
     setEditItem(null);
     setForm(EMPTY_FORM);
+    setActiveColorImageIdx(0);
     setShowForm(true);
   }
+
   function openEdit(m: MerchItem) {
     setEditItem(m);
     setForm(
@@ -225,9 +403,34 @@ export default function AdminStoreMerch() {
         freeShippingMap[m.id] ?? false,
         sizeStockMap,
         colorStockMap,
+        colorImagesMap,
+        productImagesMap,
       ),
     );
+    setActiveColorImageIdx(0);
     setShowForm(true);
+  }
+
+  // Sync colorImages when colorStock changes (add/remove colors)
+  function syncColorImages(
+    colorStock: ColorEntry[],
+    currentColorImages: ColorVariantImages[],
+  ): ColorVariantImages[] {
+    return colorStock.map((c) => {
+      const existing = currentColorImages.find(
+        (ci) => ci.colorName === c.name && ci.colorHex === c.hex,
+      );
+      return (
+        existing ?? {
+          colorName: c.name,
+          colorHex: c.hex,
+          stock: Number(c.stock) || 0,
+          frontImage: "",
+          backImage: "",
+          lifestyleImage: "",
+        }
+      );
+    });
   }
 
   async function handleSave() {
@@ -236,22 +439,52 @@ export default function AdminStoreMerch() {
       toast.error("Name is required");
       return;
     }
+
+    // Validate images
+    if (form.category === "Clothing" && form.colorStock.length > 0) {
+      const synced = syncColorImages(form.colorStock, form.colorImages);
+      const missing = synced.some(
+        (ci) => !ci.frontImage || !ci.backImage || !ci.lifestyleImage,
+      );
+      if (missing) {
+        toast.error(
+          "Each color must have Front, Back, and Lifestyle photos before saving.",
+        );
+        return;
+      }
+    } else if (form.category !== "Clothing") {
+      if (
+        !form.productImages.primaryImage ||
+        !form.productImages.alternateImage
+      ) {
+        toast.error("Primary and Alternate images are required before saving.");
+        return;
+      }
+    }
+
     setSaving(true);
+    // Step 1: Save the core merch item
+    let item: ReturnType<typeof formToMerch>;
     try {
-      const item = formToMerch(form);
+      item = formToMerch(form);
       if (editItem) {
         await actor.updateMerchItem(item);
-        toast.success("Updated");
       } else {
         await actor.createMerchItem(item);
-        toast.success("Merch item created");
       }
-      // Save free shipping setting
+    } catch (err) {
+      console.error("Admin save error (item):", err);
+      toast.error(`Failed to save item: ${icErrMsg(err)}`);
+      setSaving(false);
+      return;
+    }
+
+    // Step 2: Save settings (shipping, sizes, colors, images)
+    try {
       await actor.updateSetting({
         key: `shippingFree_${item.id}`,
         value: form.freeShipping ? "true" : "false",
       });
-      // Save size stock if clothing
       if (form.category === "Clothing") {
         const numericStock = Object.fromEntries(
           Object.entries(form.sizeStock).map(([k, v]) => [k, Number(v) || 0]),
@@ -261,7 +494,6 @@ export default function AdminStoreMerch() {
           value: JSON.stringify(numericStock),
         });
       }
-      // Save color stock for all categories
       const numericColors = form.colorStock.map((c) => ({
         ...c,
         stock: Number(c.stock) || 0,
@@ -270,13 +502,35 @@ export default function AdminStoreMerch() {
         key: `colorStock_${item.id}`,
         value: JSON.stringify(numericColors),
       });
-      setShowForm(false);
+      if (form.category === "Clothing") {
+        const synced = syncColorImages(form.colorStock, form.colorImages);
+        // Save each color's images separately to stay under ICP 2MB message limit
+        for (let ci = 0; ci < synced.length; ci++) {
+          await actor.updateSetting({
+            key: `colorImg_${item.id}_${ci}`,
+            value: JSON.stringify(synced[ci]),
+          });
+        }
+        // Clear the old legacy single-blob key if it existed
+        await actor.updateSetting({ key: `colorImages_${item.id}`, value: "" });
+      } else {
+        await actor.updateSetting({
+          key: `productImages_${item.id}`,
+          value: JSON.stringify(form.productImages),
+        });
+      }
     } catch (err) {
-      console.error("Admin save error:", err);
-      toast.error(`Save failed: ${icErrMsg(err)}`);
+      console.error("Admin save error (settings):", err);
+      toast.error(`Item saved but settings failed: ${icErrMsg(err)}`);
       setSaving(false);
+      await load();
       return;
     }
+
+    toast.success(
+      editItem ? "Updated successfully" : "Item added successfully",
+    );
+    setShowForm(false);
     setSaving(false);
     await load();
   }
@@ -286,12 +540,20 @@ export default function AdminStoreMerch() {
     const idToDelete = deleteId;
     try {
       await actor.deleteMerchItem(idToDelete);
-      await actor.updateSetting({
-        key: `shippingFree_${idToDelete}`,
-        value: "",
-      });
-      await actor.updateSetting({ key: `sizeStock_${idToDelete}`, value: "" });
-      await actor.updateSetting({ key: `colorStock_${idToDelete}`, value: "" });
+      await Promise.all([
+        actor.updateSetting({ key: `shippingFree_${idToDelete}`, value: "" }),
+        actor.updateSetting({ key: `sizeStock_${idToDelete}`, value: "" }),
+        actor.updateSetting({ key: `colorStock_${idToDelete}`, value: "" }),
+        actor.updateSetting({ key: `colorImages_${idToDelete}`, value: "" }),
+        actor.updateSetting({ key: `productImages_${idToDelete}`, value: "" }),
+        // Clear per-color image keys (up to 20 colors)
+        ...Array.from({ length: 20 }, (_, i) =>
+          actor.updateSetting({
+            key: `colorImg_${idToDelete}_${i}`,
+            value: "",
+          }),
+        ),
+      ]);
       toast.success("Deleted");
       setDeleteId(null);
     } catch (err) {
@@ -340,6 +602,9 @@ export default function AdminStoreMerch() {
       ...p,
       colorStock: p.colorStock.filter((_, i) => i !== idx),
     }));
+    if (activeColorImageIdx >= form.colorStock.length - 1) {
+      setActiveColorImageIdx(Math.max(0, form.colorStock.length - 2));
+    }
   }
 
   function updateColorEntry(
@@ -354,6 +619,25 @@ export default function AdminStoreMerch() {
       ),
     }));
   }
+
+  function updateColorImage(
+    colorIdx: number,
+    field: keyof Omit<ColorVariantImages, "colorName" | "colorHex" | "stock">,
+    value: string,
+  ) {
+    setForm((p) => {
+      const synced = syncColorImages(p.colorStock, p.colorImages);
+      const updated = synced.map((ci, i) =>
+        i === colorIdx ? { ...ci, [field]: value } : ci,
+      );
+      return { ...p, colorImages: updated };
+    });
+  }
+
+  // Get current synced color images for display
+  const syncedColorImages = syncColorImages(form.colorStock, form.colorImages);
+  const activeColorData = form.colorStock[activeColorImageIdx];
+  const activeColorImages = syncedColorImages[activeColorImageIdx];
 
   return (
     <div className="flex flex-col gap-6">
@@ -598,7 +882,7 @@ export default function AdminStoreMerch() {
         >
           <div
             data-ocid="admin.merch.modal"
-            className="w-full max-w-xl rounded-2xl p-6 flex flex-col gap-4 my-auto"
+            className="w-full max-w-2xl rounded-2xl p-6 flex flex-col gap-4 my-auto"
             style={{
               background: "#111",
               border: "1px solid rgba(212,175,55,0.2)",
@@ -627,92 +911,7 @@ export default function AdminStoreMerch() {
                   style={inputStyle}
                 />
               </div>
-              <div className="flex flex-col gap-1">
-                <Label style={{ color: "#888", fontSize: "0.75rem" }}>
-                  Cover Image / Emoji
-                </Label>
-                <div className="flex items-center gap-3 flex-wrap">
-                  {form.coverEmoji &&
-                    (form.coverEmoji.startsWith("data:") ||
-                      form.coverEmoji.startsWith("http")) && (
-                      <img
-                        src={form.coverEmoji}
-                        alt="cover"
-                        className="rounded object-cover"
-                        style={{
-                          width: 50,
-                          height: 50,
-                          border: "1px solid rgba(212,175,55,0.3)",
-                        }}
-                      />
-                    )}
-                  <label style={{ cursor: "pointer" }}>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const reader = new FileReader();
-                        reader.onload = (ev) => {
-                          const img = new Image();
-                          img.onload = () => {
-                            const maxW = 800;
-                            const scale =
-                              img.width > maxW ? maxW / img.width : 1;
-                            const canvas = document.createElement("canvas");
-                            canvas.width = img.width * scale;
-                            canvas.height = img.height * scale;
-                            canvas
-                              .getContext("2d")
-                              ?.drawImage(
-                                img,
-                                0,
-                                0,
-                                canvas.width,
-                                canvas.height,
-                              );
-                            setForm((p) => ({
-                              ...p,
-                              coverEmoji: canvas.toDataURL("image/jpeg", 0.7),
-                            }));
-                          };
-                          img.src = ev.target?.result as string;
-                        };
-                        reader.readAsDataURL(file);
-                        e.target.value = "";
-                      }}
-                    />
-                    <span
-                      style={{
-                        border: "1px solid rgba(212,175,55,0.3)",
-                        color: "#D4AF37",
-                        background: "rgba(212,175,55,0.06)",
-                        borderRadius: 8,
-                        padding: "4px 12px",
-                        fontSize: "0.75rem",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Upload from Device
-                    </span>
-                  </label>
-                </div>
-                {(!form.coverEmoji ||
-                  (!form.coverEmoji.startsWith("data:") &&
-                    !form.coverEmoji.startsWith("http"))) && (
-                  <Input
-                    value={form.coverEmoji}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, coverEmoji: e.target.value }))
-                    }
-                    placeholder="Or enter emoji e.g. 🛍️"
-                    style={inputStyle}
-                    className="mt-1"
-                  />
-                )}
-              </div>
+
               <div className="flex flex-col gap-1">
                 <Label style={{ color: "#888", fontSize: "0.75rem" }}>
                   Category
@@ -737,6 +936,69 @@ export default function AdminStoreMerch() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Cover Emoji/Fallback */}
+              <div className="flex flex-col gap-1">
+                <Label style={{ color: "#888", fontSize: "0.75rem" }}>
+                  Cover Image / Emoji (fallback)
+                </Label>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {form.coverEmoji &&
+                    (form.coverEmoji.startsWith("data:") ||
+                      form.coverEmoji.startsWith("http")) && (
+                      <img
+                        src={form.coverEmoji}
+                        alt="cover"
+                        className="rounded object-cover"
+                        style={{
+                          width: 50,
+                          height: 50,
+                          border: "1px solid rgba(212,175,55,0.3)",
+                        }}
+                      />
+                    )}
+                  <label style={{ cursor: "pointer" }}>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const compressed = await compressImage(file);
+                        setForm((p) => ({ ...p, coverEmoji: compressed }));
+                        e.target.value = "";
+                      }}
+                    />
+                    <span
+                      style={{
+                        border: "1px solid rgba(212,175,55,0.3)",
+                        color: "#D4AF37",
+                        background: "rgba(212,175,55,0.06)",
+                        borderRadius: 8,
+                        padding: "4px 12px",
+                        fontSize: "0.75rem",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Upload
+                    </span>
+                  </label>
+                </div>
+                {(!form.coverEmoji ||
+                  (!form.coverEmoji.startsWith("data:") &&
+                    !form.coverEmoji.startsWith("http"))) && (
+                  <Input
+                    value={form.coverEmoji}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, coverEmoji: e.target.value }))
+                    }
+                    placeholder="Or enter emoji e.g. 🛍️"
+                    style={inputStyle}
+                    className="mt-1"
+                  />
+                )}
               </div>
 
               {/* Size Stock — only for Clothing */}
@@ -793,7 +1055,7 @@ export default function AdminStoreMerch() {
                 </div>
               )}
 
-              {/* Color Stock — for all categories */}
+              {/* Color Stock */}
               <div
                 className="col-span-2 rounded-xl p-4 flex flex-col gap-3"
                 style={{
@@ -826,10 +1088,9 @@ export default function AdminStoreMerch() {
                   <div className="flex flex-col gap-2">
                     {form.colorStock.map((entry, idx) => (
                       <div
-                        key={entry.hex + entry.name}
+                        key={`${entry.hex}-${idx}`}
                         className="flex items-center gap-2"
                       >
-                        {/* Color swatch */}
                         <div className="relative flex-shrink-0">
                           <input
                             type="color"
@@ -849,7 +1110,6 @@ export default function AdminStoreMerch() {
                             title="Pick color"
                           />
                         </div>
-                        {/* Name */}
                         <Input
                           value={entry.name}
                           onChange={(e) =>
@@ -858,7 +1118,6 @@ export default function AdminStoreMerch() {
                           placeholder="Color name (e.g. Black)"
                           style={{ ...inputStyle, flex: 1, fontSize: "0.8rem" }}
                         />
-                        {/* Stock */}
                         <Input
                           type="number"
                           min="0"
@@ -874,7 +1133,6 @@ export default function AdminStoreMerch() {
                             fontSize: "0.8rem",
                           }}
                         />
-                        {/* Remove */}
                         <button
                           type="button"
                           onClick={() => removeColorEntry(idx)}
@@ -891,6 +1149,184 @@ export default function AdminStoreMerch() {
                   </div>
                 )}
               </div>
+
+              {/* Per-Color Images — Clothing only */}
+              {form.category === "Clothing" && form.colorStock.length > 0 && (
+                <div
+                  className="col-span-2 rounded-xl p-4 flex flex-col gap-4"
+                  style={{
+                    background: "rgba(212,175,55,0.04)",
+                    border: "1px solid rgba(212,175,55,0.2)",
+                  }}
+                >
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <Label style={{ color: "#D4AF37", fontSize: "0.75rem" }}>
+                      📸 Product Photos (per color — Front, Back, Lifestyle
+                      required)
+                    </Label>
+                  </div>
+                  {/* Color tabs */}
+                  <div className="flex flex-wrap gap-2">
+                    {form.colorStock.map((c, idx) => {
+                      const ci = syncedColorImages[idx];
+                      const complete =
+                        ci?.frontImage && ci?.backImage && ci?.lifestyleImage;
+                      return (
+                        <button
+                          key={`${c.hex}-${idx}`}
+                          type="button"
+                          onClick={() => setActiveColorImageIdx(idx)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                          style={{
+                            background:
+                              activeColorImageIdx === idx
+                                ? "rgba(212,175,55,0.2)"
+                                : "rgba(255,255,255,0.04)",
+                            border:
+                              activeColorImageIdx === idx
+                                ? "1px solid rgba(212,175,55,0.5)"
+                                : "1px solid rgba(255,255,255,0.08)",
+                            color:
+                              activeColorImageIdx === idx ? "#D4AF37" : "#888",
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: "50%",
+                              background: c.hex,
+                              display: "inline-block",
+                              border: "1px solid rgba(255,255,255,0.2)",
+                            }}
+                          />
+                          {c.name || "Unnamed"}
+                          {complete ? (
+                            <span style={{ color: "#22C55E" }}>✓</span>
+                          ) : (
+                            <span style={{ color: "#EF4444" }}>!</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Image upload slots for active color */}
+                  {activeColorData && activeColorImages && (
+                    <div>
+                      <p className="text-xs mb-3" style={{ color: "#888" }}>
+                        Uploading photos for:{" "}
+                        <strong
+                          style={{
+                            color:
+                              activeColorData.hex !== "#000000"
+                                ? activeColorData.hex
+                                : "#f0ead6",
+                          }}
+                        >
+                          {activeColorData.name || "this color"}
+                        </strong>
+                      </p>
+                      <div className="grid grid-cols-3 gap-3">
+                        <ImageSlot
+                          label="Front Photo"
+                          required
+                          value={activeColorImages.frontImage}
+                          onChange={(v) =>
+                            updateColorImage(
+                              activeColorImageIdx,
+                              "frontImage",
+                              v,
+                            )
+                          }
+                        />
+                        <ImageSlot
+                          label="Back Photo"
+                          required
+                          value={activeColorImages.backImage}
+                          onChange={(v) =>
+                            updateColorImage(
+                              activeColorImageIdx,
+                              "backImage",
+                              v,
+                            )
+                          }
+                        />
+                        <ImageSlot
+                          label="Lifestyle Photo"
+                          required
+                          value={activeColorImages.lifestyleImage}
+                          onChange={(v) =>
+                            updateColorImage(
+                              activeColorImageIdx,
+                              "lifestyleImage",
+                              v,
+                            )
+                          }
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Non-clothing product images */}
+              {form.category !== "Clothing" && (
+                <div
+                  className="col-span-2 rounded-xl p-4 flex flex-col gap-4"
+                  style={{
+                    background: "rgba(212,175,55,0.04)",
+                    border: "1px solid rgba(212,175,55,0.2)",
+                  }}
+                >
+                  <Label style={{ color: "#D4AF37", fontSize: "0.75rem" }}>
+                    📸 Product Photos (Primary & Alternate required)
+                  </Label>
+                  <div className="grid grid-cols-3 gap-3">
+                    <ImageSlot
+                      label="Primary Image"
+                      required
+                      value={form.productImages.primaryImage}
+                      onChange={(v) =>
+                        setForm((p) => ({
+                          ...p,
+                          productImages: {
+                            ...p.productImages,
+                            primaryImage: v,
+                          },
+                        }))
+                      }
+                    />
+                    <ImageSlot
+                      label="Alternate Image"
+                      required
+                      value={form.productImages.alternateImage}
+                      onChange={(v) =>
+                        setForm((p) => ({
+                          ...p,
+                          productImages: {
+                            ...p.productImages,
+                            alternateImage: v,
+                          },
+                        }))
+                      }
+                    />
+                    <ImageSlot
+                      label="Lifestyle Image"
+                      value={form.productImages.lifestyleImage ?? ""}
+                      onChange={(v) =>
+                        setForm((p) => ({
+                          ...p,
+                          productImages: {
+                            ...p.productImages,
+                            lifestyleImage: v,
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="col-span-2 flex flex-col gap-1">
                 <Label style={{ color: "#888", fontSize: "0.75rem" }}>

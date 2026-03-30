@@ -1,7 +1,12 @@
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import type {
+  ColorVariantImages,
+  ProductImages,
+} from "../admin/AdminStoreMerch";
 import type { Audiobook, MerchItem } from "../backend.d";
+import { ZoomImage } from "../components/ZoomImage";
 import {
   AUDIOBOOK_PAYMENT_LINKS,
   MERCH_PAYMENT_LINKS,
@@ -105,6 +110,12 @@ export default function Store({ isDark }: Props) {
   const [colorStockMap, setColorStockMap] = useState<
     Record<string, ColorVariant[]>
   >({});
+  const [colorImagesMap, setColorImagesMap] = useState<
+    Record<string, ColorVariantImages[]>
+  >({});
+  const [productImagesMap, setProductImagesMap] = useState<
+    Record<string, ProductImages>
+  >({});
   const [loading, setLoading] = useState(true);
   const [currency, setCurrency] = useState<Currency>("INR");
   const [activeTab, setActiveTab] = useState<"audiobooks" | "merch">(
@@ -143,30 +154,47 @@ export default function Store({ isDark }: Props) {
         const settings = await actor.getAllSettings();
         const ssMap: Record<string, Record<string, number>> = {};
         const csMap: Record<string, ColorVariant[]> = {};
+        const ciMap: Record<string, ColorVariantImages[]> = {};
+        const piMap: Record<string, ProductImages> = {};
         for (const s of settings) {
           if (s.key.startsWith("sizeStock_")) {
             const id = s.key.replace("sizeStock_", "");
             try {
               ssMap[id] = JSON.parse(s.value);
             } catch {
-              // ignore
+              /* ignore */
             }
           } else if (s.key.startsWith("colorStock_")) {
             const id = s.key.replace("colorStock_", "");
             try {
               const parsed = JSON.parse(s.value);
-              if (Array.isArray(parsed) && parsed.length > 0) {
+              if (Array.isArray(parsed) && parsed.length > 0)
                 csMap[id] = parsed;
-              }
             } catch {
-              // ignore
+              /* ignore */
+            }
+          } else if (s.key.startsWith("colorImages_")) {
+            const id = s.key.replace("colorImages_", "");
+            try {
+              ciMap[id] = JSON.parse(s.value);
+            } catch {
+              /* ignore */
+            }
+          } else if (s.key.startsWith("productImages_")) {
+            const id = s.key.replace("productImages_", "");
+            try {
+              piMap[id] = JSON.parse(s.value);
+            } catch {
+              /* ignore */
             }
           }
         }
         setSizeStockMap(ssMap);
         setColorStockMap(csMap);
+        setColorImagesMap(ciMap);
+        setProductImagesMap(piMap);
       } catch {
-        // Settings failed - products still show
+        // Settings failed — products still show
       }
 
       setLoading(false);
@@ -444,6 +472,8 @@ export default function Store({ isDark }: Props) {
           item={detailItem}
           sizeStock={sizeStockMap[detailItem.id]}
           colorStock={colorStockMap[detailItem.id]}
+          colorImages={colorImagesMap[detailItem.id]}
+          productImages={productImagesMap[detailItem.id]}
           displayPrice={(() => {
             const link = MERCH_PAYMENT_LINKS.find(
               (l) => l.productId === detailItem.id,
@@ -467,7 +497,7 @@ export default function Store({ isDark }: Props) {
   );
 }
 
-// ─── AudiobookCard ──────────────────────────────────────────────────────────────────────────────
+// ─── AudiobookCard ─────────────────────────────────────────────────────────────
 
 interface AudiobookCardProps {
   ab: Audiobook;
@@ -563,7 +593,7 @@ function AudiobookCard({
   );
 }
 
-// ─── MerchCard ────────────────────────────────────────────────────────────────────────────────────
+// ─── MerchCard ────────────────────────────────────────────────────────────────
 
 interface MerchCardProps {
   item: MerchItem;
@@ -669,7 +699,6 @@ function MerchCard({
         <p className="text-xs mb-3 line-clamp-2" style={{ color: mutedColor }}>
           {item.description}
         </p>
-        {/* Color swatches preview */}
         {hasColors && (
           <div className="flex items-center gap-1 mb-3">
             {colorStock.slice(0, 6).map((c) => (
@@ -742,7 +771,7 @@ function hasizes(item: MerchItem, sizeStock?: Record<string, number>): boolean {
   );
 }
 
-// ─── MerchDetailModal ───────────────────────────────────────────────────────────────────────────────────
+// ─── MerchDetailModal ─────────────────────────────────────────────────────────
 
 const SIZES = ["XS", "S", "M", "L", "XL", "XXL"] as const;
 
@@ -750,6 +779,8 @@ interface MerchDetailModalProps {
   item: MerchItem;
   sizeStock?: Record<string, number>;
   colorStock?: ColorVariant[];
+  colorImages?: ColorVariantImages[];
+  productImages?: ProductImages;
   displayPrice: string;
   onClose: () => void;
   onAddToCart: (size?: string, color?: string) => void;
@@ -759,13 +790,17 @@ function MerchDetailModal({
   item,
   sizeStock,
   colorStock,
+  colorImages,
+  productImages,
   displayPrice,
   onClose,
   onAddToCart,
 }: MerchDetailModalProps) {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
+  const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [showSizeChart, setShowSizeChart] = useState(false);
+
   const showSizes =
     item.category === "Clothing" &&
     sizeStock &&
@@ -782,6 +817,44 @@ function MerchDetailModal({
     if (selectedColor) return `Add to Cart — ${selectedColor}`;
     return "Add to Cart";
   })();
+
+  // Determine active image set
+  const imageSet: Array<{ src: string; label: string }> = [];
+
+  if (item.category === "Clothing" && colorImages && colorImages.length > 0) {
+    // Find images for selected color
+    const activeColorData = selectedColor
+      ? colorImages.find((ci) => ci.colorName === selectedColor)
+      : colorImages[0];
+    if (activeColorData) {
+      if (activeColorData.frontImage)
+        imageSet.push({ src: activeColorData.frontImage, label: "Front" });
+      if (activeColorData.backImage)
+        imageSet.push({ src: activeColorData.backImage, label: "Back" });
+      if (activeColorData.lifestyleImage)
+        imageSet.push({
+          src: activeColorData.lifestyleImage,
+          label: "Lifestyle",
+        });
+    }
+  } else if (item.category !== "Clothing" && productImages) {
+    if (productImages.primaryImage)
+      imageSet.push({ src: productImages.primaryImage, label: "Primary" });
+    if (productImages.alternateImage)
+      imageSet.push({ src: productImages.alternateImage, label: "Alternate" });
+    if (productImages.lifestyleImage)
+      imageSet.push({ src: productImages.lifestyleImage, label: "Lifestyle" });
+  }
+
+  // When color selection changes, reset to front image
+  const handleColorSelect = (colorName: string) => {
+    setSelectedColor(selectedColor === colorName ? null : colorName);
+    setActiveImageIdx(0);
+  };
+
+  const clampedIdx = Math.min(activeImageIdx, Math.max(0, imageSet.length - 1));
+  // activeImage reserved for future use
+  const hasgallery = imageSet.length > 0;
 
   return (
     <div
@@ -815,32 +888,114 @@ function MerchDetailModal({
           <X size={18} />
         </button>
 
-        {/* Cover */}
-        <div
-          className="h-56 flex items-center justify-center relative"
-          style={{ background: "linear-gradient(135deg, #0a0a0a, #1a120a)" }}
-        >
-          {item.coverEmoji &&
-          (item.coverEmoji.startsWith("data:") ||
-            item.coverEmoji.startsWith("http")) ? (
-            <img
-              src={item.coverEmoji}
-              alt={item.name}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="text-center">
-              <div style={{ fontSize: "5rem" }}>{item.coverEmoji || "👕"}</div>
-            </div>
-          )}
+        {/* Image Gallery or Cover Fallback */}
+        {hasgallery ? (
           <div
-            className="absolute bottom-0 left-0 right-0 h-16"
-            style={{
-              background:
-                "linear-gradient(to top, rgba(12,12,12,0.97), transparent)",
-            }}
-          />
-        </div>
+            className="flex flex-col"
+            style={{ background: "linear-gradient(135deg, #0a0a0a, #1a120a)" }}
+          >
+            {/* Main image with zoom */}
+            <div
+              className="relative"
+              style={{ aspectRatio: "4/3", overflow: "hidden" }}
+            >
+              {imageSet.map((img, idx) => (
+                <div
+                  key={img.label}
+                  className="absolute inset-0"
+                  style={{
+                    opacity: idx === clampedIdx ? 1 : 0,
+                    transition: "opacity 0.3s ease",
+                    pointerEvents: idx === clampedIdx ? "auto" : "none",
+                  }}
+                >
+                  <ZoomImage
+                    src={img.src}
+                    alt={`${item.name} — ${img.label}`}
+                    className="w-full h-full"
+                  />
+                </div>
+              ))}
+            </div>
+            {/* Thumbnails */}
+            {imageSet.length > 1 && (
+              <div className="flex gap-2 p-3 justify-center">
+                {imageSet.map((img, idx) => (
+                  <button
+                    key={img.label}
+                    type="button"
+                    onClick={() => setActiveImageIdx(idx)}
+                    className="flex flex-col items-center gap-1 transition-all"
+                    style={{
+                      opacity: idx === clampedIdx ? 1 : 0.55,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        border:
+                          idx === clampedIdx
+                            ? "2px solid #D4AF37"
+                            : "2px solid rgba(212,175,55,0.2)",
+                        transition: "border-color 0.2s ease",
+                      }}
+                    >
+                      <img
+                        src={img.src}
+                        alt={img.label}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                      />
+                    </div>
+                    <span
+                      style={{
+                        fontSize: "0.6rem",
+                        color: idx === clampedIdx ? "#D4AF37" : "#555",
+                      }}
+                    >
+                      {img.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Fallback cover */
+          <div
+            className="h-56 flex items-center justify-center relative"
+            style={{ background: "linear-gradient(135deg, #0a0a0a, #1a120a)" }}
+          >
+            {item.coverEmoji &&
+            (item.coverEmoji.startsWith("data:") ||
+              item.coverEmoji.startsWith("http")) ? (
+              <img
+                src={item.coverEmoji}
+                alt={item.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="text-center">
+                <div style={{ fontSize: "5rem" }}>
+                  {item.coverEmoji || "👕"}
+                </div>
+              </div>
+            )}
+            <div
+              className="absolute bottom-0 left-0 right-0 h-16"
+              style={{
+                background:
+                  "linear-gradient(to top, rgba(12,12,12,0.97), transparent)",
+              }}
+            />
+          </div>
+        )}
 
         <div className="p-6 flex flex-col gap-4">
           {/* Title & badge */}
@@ -976,9 +1131,7 @@ function MerchDetailModal({
                       type="button"
                       disabled={isDisabled}
                       title={`${c.name}${c.stock > 0 ? ` (${c.stock} left)` : " — Out of stock"}`}
-                      onClick={() =>
-                        setSelectedColor(isSelected ? null : c.name)
-                      }
+                      onClick={() => handleColorSelect(c.name)}
                       className="relative transition-all duration-200"
                       style={{
                         width: 32,

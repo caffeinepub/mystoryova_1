@@ -292,7 +292,14 @@ actor {
   };
 
   public shared ({ caller }) func removeSubscriber(email : Text) : async () {
-    subscribers.retain(func (sub) { sub != email });
+    let filtered = List.empty<Text>();
+    for (sub in subscribers.values()) {
+      if (sub != email) { filtered.add(sub) };
+    };
+    subscribers.clear();
+    for (sub in filtered.values()) {
+      subscribers.add(sub);
+    };
   };
 
   public query ({ caller }) func getSubscribers() : async [Text] {
@@ -540,7 +547,9 @@ actor {
         addr with
         isDefault = newIsDefault;
       };
+      customerAddresses.remove(addrId);
       customerAddresses.add(addrId, updatedAddress);
     };
   };
 };
+
