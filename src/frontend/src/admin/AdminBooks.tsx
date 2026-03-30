@@ -134,7 +134,7 @@ export default function AdminBooks() {
     try {
       const data = await actor.getBooks();
       setBooks([...data].reverse());
-    } catch (_uploadErr) {
+    } catch {
       // error ignored, will show empty state
     } finally {
       setLoading(false);
@@ -490,10 +490,8 @@ export default function AdminBooks() {
                         try {
                           const url = await uploadImage(file);
                           setForm((p) => ({ ...p, coverImageUrl: url }));
-                        } catch (uploadErr) {
-                          toast.error(
-                            `Upload failed: ${uploadErr instanceof Error ? uploadErr.message : String(uploadErr)}`,
-                          );
+                        } catch {
+                          toast.error("Failed to upload image");
                         } finally {
                           setUploadingCover(false);
                         }

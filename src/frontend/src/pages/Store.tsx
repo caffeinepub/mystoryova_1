@@ -267,7 +267,6 @@ export default function Store({ isDark }: Props) {
       type: "merch",
       currency,
       selectedColor,
-      selectedSize: selectedSize ?? undefined,
     });
     window.dispatchEvent(new Event("cart-update"));
     toast.success(`${name} added to cart!`);

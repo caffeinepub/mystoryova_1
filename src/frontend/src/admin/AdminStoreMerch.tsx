@@ -247,11 +247,6 @@ function ImageSlot({
                 try {
                   const url = await _uploadImage(file);
                   onChange(url);
-                } catch (err) {
-                  console.error("Upload failed:", err);
-                  toast.error(
-                    `Upload failed: ${err instanceof Error ? err.message : String(err)}`,
-                  );
                 } finally {
                   setUploading(false);
                 }
@@ -316,14 +311,14 @@ export default function AdminStoreMerch() {
           const id = s.key.replace("sizeStock_", "");
           try {
             ssMap[id] = JSON.parse(s.value);
-          } catch (_uploadErr) {
+          } catch {
             /* ignore */
           }
         } else if (s.key.startsWith("colorStock_")) {
           const id = s.key.replace("colorStock_", "");
           try {
             csMap[id] = JSON.parse(s.value);
-          } catch (_uploadErr) {
+          } catch {
             /* ignore */
           }
         } else if (s.key.startsWith("colorImages_")) {
@@ -332,7 +327,7 @@ export default function AdminStoreMerch() {
           if (!ciMap[id]) {
             try {
               ciMap[id] = JSON.parse(s.value);
-            } catch (_uploadErr) {
+            } catch {
               /* ignore */
             }
           }
@@ -348,7 +343,7 @@ export default function AdminStoreMerch() {
             if (!ciMap[id]) ciMap[id] = [];
             try {
               ciMap[id][idx] = JSON.parse(s.value);
-            } catch (_uploadErr) {
+            } catch {
               /* ignore */
             }
           }
@@ -356,7 +351,7 @@ export default function AdminStoreMerch() {
           const id = s.key.replace("productImages_", "");
           try {
             piMap[id] = JSON.parse(s.value);
-          } catch (_uploadErr) {
+          } catch {
             /* ignore */
           }
         }
@@ -366,7 +361,7 @@ export default function AdminStoreMerch() {
       setColorStockMap(csMap);
       setColorImagesMap(ciMap);
       setProductImagesMap(piMap);
-    } catch (_uploadErr) {
+    } catch {
       // error ignored
     } finally {
       setLoading(false);
@@ -960,10 +955,8 @@ export default function AdminStoreMerch() {
                         try {
                           const url = await uploadImage(file);
                           setForm((p) => ({ ...p, coverEmoji: url }));
-                        } catch (uploadErr) {
-                          toast.error(
-                            `Upload failed: ${uploadErr instanceof Error ? uploadErr.message : String(uploadErr)}`,
-                          );
+                        } catch {
+                          toast.error("Failed to upload image");
                         } finally {
                           setUploadingCoverEmoji(false);
                         }

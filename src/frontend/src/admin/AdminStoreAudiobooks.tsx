@@ -122,7 +122,7 @@ export default function AdminStoreAudiobooks() {
         }
       }
       setAudioUrls(urls);
-    } catch (_uploadErr) {
+    } catch {
       // error ignored
     } finally {
       setLoading(false);
@@ -515,10 +515,8 @@ export default function AdminStoreAudiobooks() {
                         try {
                           const url = await uploadImage(file);
                           setForm((p) => ({ ...p, coverEmoji: url }));
-                        } catch (uploadErr) {
-                          toast.error(
-                            `Upload failed: ${uploadErr instanceof Error ? uploadErr.message : String(uploadErr)}`,
-                          );
+                        } catch {
+                          toast.error("Failed to upload image");
                         } finally {
                           setUploadingCover(false);
                         }
