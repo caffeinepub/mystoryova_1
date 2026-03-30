@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import type { Audiobook } from "../backend.d";
 import { AUDIOBOOKS } from "../data/seedStore";
 import { useActor } from "../hooks/useActor";
+import { useStorageClient } from "../utils/useStorageClient";
 
 interface FormState {
   id: string;
@@ -102,6 +103,8 @@ export default function AdminStoreAudiobooks() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const { uploadImage } = useStorageClient();
   const audioInputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
@@ -505,36 +508,18 @@ export default function AdminStoreAudiobooks() {
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        const reader = new FileReader();
-                        reader.onload = (ev) => {
-                          const img = new Image();
-                          img.onload = () => {
-                            const maxW = 600;
-                            const scale =
-                              img.width > maxW ? maxW / img.width : 1;
-                            const canvas = document.createElement("canvas");
-                            canvas.width = img.width * scale;
-                            canvas.height = img.height * scale;
-                            canvas
-                              .getContext("2d")
-                              ?.drawImage(
-                                img,
-                                0,
-                                0,
-                                canvas.width,
-                                canvas.height,
-                              );
-                            setForm((p) => ({
-                              ...p,
-                              coverEmoji: canvas.toDataURL("image/jpeg", 0.75),
-                            }));
-                          };
-                          img.src = ev.target?.result as string;
-                        };
-                        reader.readAsDataURL(file);
+                        setUploadingCover(true);
+                        try {
+                          const url = await uploadImage(file);
+                          setForm((p) => ({ ...p, coverEmoji: url }));
+                        } catch {
+                          toast.error("Failed to upload image");
+                        } finally {
+                          setUploadingCover(false);
+                        }
                         e.target.value = "";
                       }}
                     />
@@ -549,7 +534,7 @@ export default function AdminStoreAudiobooks() {
                         cursor: "pointer",
                       }}
                     >
-                      Upload from Device
+                      {uploadingCover ? "Uploading..." : "Upload from Device"}
                     </span>
                   </label>
                 </div>

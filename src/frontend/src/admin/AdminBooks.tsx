@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import type { Book, BookFormat } from "../backend.d";
 import { SEED_BOOKS } from "../data/seedBooks";
 import { useActor } from "../hooks/useActor";
+import { useStorageClient } from "../utils/useStorageClient";
 
 const GENRES = [
   "Literary Fiction",
@@ -125,6 +126,8 @@ export default function AdminBooks() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const { uploadImage } = useStorageClient();
 
   async function load() {
     if (!actor) return;
@@ -480,39 +483,18 @@ export default function AdminBooks() {
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        const reader = new FileReader();
-                        reader.onload = (ev) => {
-                          const img = new Image();
-                          img.onload = () => {
-                            const maxW = 600;
-                            const scale =
-                              img.width > maxW ? maxW / img.width : 1;
-                            const canvas = document.createElement("canvas");
-                            canvas.width = img.width * scale;
-                            canvas.height = img.height * scale;
-                            canvas
-                              .getContext("2d")
-                              ?.drawImage(
-                                img,
-                                0,
-                                0,
-                                canvas.width,
-                                canvas.height,
-                              );
-                            setForm((p) => ({
-                              ...p,
-                              coverImageUrl: canvas.toDataURL(
-                                "image/jpeg",
-                                0.75,
-                              ),
-                            }));
-                          };
-                          img.src = ev.target?.result as string;
-                        };
-                        reader.readAsDataURL(file);
+                        setUploadingCover(true);
+                        try {
+                          const url = await uploadImage(file);
+                          setForm((p) => ({ ...p, coverImageUrl: url }));
+                        } catch {
+                          toast.error("Failed to upload image");
+                        } finally {
+                          setUploadingCover(false);
+                        }
                         e.target.value = "";
                       }}
                     />
@@ -527,7 +509,7 @@ export default function AdminBooks() {
                         cursor: "pointer",
                       }}
                     >
-                      Upload from Device
+                      {uploadingCover ? "Uploading..." : "Upload from Device"}
                     </span>
                   </label>
                 </div>

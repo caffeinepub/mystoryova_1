@@ -98,7 +98,7 @@ export default function Cart({ isDark }: Props) {
             <div className="flex-1 flex flex-col gap-4">
               {items.map((item, i) => (
                 <div
-                  key={item.id}
+                  key={item.cartKey}
                   data-ocid={`cart.item.${i + 1}`}
                   className="rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4"
                   style={{
@@ -145,7 +145,9 @@ export default function Cart({ isDark }: Props) {
                         color: "#D4AF37",
                         background: "transparent",
                       }}
-                      onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                      onClick={() =>
+                        updateQuantity(item.cartKey, item.quantity - 1)
+                      }
                     >
                       −
                     </button>
@@ -164,7 +166,9 @@ export default function Cart({ isDark }: Props) {
                         color: "#D4AF37",
                         background: "transparent",
                       }}
-                      onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                      onClick={() =>
+                        updateQuantity(item.cartKey, item.quantity + 1)
+                      }
                     >
                       +
                     </button>
@@ -185,7 +189,7 @@ export default function Cart({ isDark }: Props) {
                       border: "1px solid rgba(255,100,100,0.3)",
                       color: "#ff6b6b",
                     }}
-                    onClick={() => removeFromCart(item.id)}
+                    onClick={() => removeFromCart(item.cartKey)}
                     aria-label="Remove item"
                   >
                     ✕
