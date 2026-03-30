@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 
 interface ZoomImageProps {
   src: string;
@@ -9,36 +9,36 @@ interface ZoomImageProps {
 
 export function ZoomImage({ src, alt, className, style }: ZoomImageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [lens, setLens] = useState<{ x: number; y: number; visible: boolean }>({
-    x: 0,
-    y: 0,
-    visible: false,
-  });
+  const lensRef = useRef<HTMLDivElement>(null);
 
   const LENS_SIZE = 150;
-  const ZOOM_FACTOR = 2;
+  const ZOOM_FACTOR = 2.5;
 
-  function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const container = containerRef.current;
-    if (!container) return;
+    const lens = lensRef.current;
+    if (!container || !lens) return;
     const rect = container.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    setLens({ x, y, visible: true });
-  }
+    const bgX = x * ZOOM_FACTOR - LENS_SIZE / 2;
+    const bgY = y * ZOOM_FACTOR - LENS_SIZE / 2;
+    lens.style.left = `${x - LENS_SIZE / 2}px`;
+    lens.style.top = `${y - LENS_SIZE / 2}px`;
+    lens.style.backgroundPosition = `-${bgX}px -${bgY}px`;
+    lens.style.opacity = "1";
+  }, []);
 
-  function handleMouseLeave() {
-    setLens((prev) => ({ ...prev, visible: false }));
-  }
-
-  const bgX = lens.x * ZOOM_FACTOR - LENS_SIZE / 2;
-  const bgY = lens.y * ZOOM_FACTOR - LENS_SIZE / 2;
+  const handleMouseLeave = useCallback(() => {
+    const lens = lensRef.current;
+    if (lens) lens.style.opacity = "0";
+  }, []);
 
   return (
     <div
       ref={containerRef}
       className={`relative overflow-hidden select-none ${className ?? ""}`}
-      style={{ ...style, cursor: lens.visible ? "crosshair" : "default" }}
+      style={{ ...style, cursor: "crosshair" }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
@@ -48,12 +48,10 @@ export function ZoomImage({ src, alt, className, style }: ZoomImageProps) {
         className="w-full h-full object-cover"
         draggable={false}
       />
-      {/* Zoom lens */}
       <div
+        ref={lensRef}
         style={{
           position: "absolute",
-          left: lens.x - LENS_SIZE / 2,
-          top: lens.y - LENS_SIZE / 2,
           width: LENS_SIZE,
           height: LENS_SIZE,
           borderRadius: "50%",
@@ -62,11 +60,10 @@ export function ZoomImage({ src, alt, className, style }: ZoomImageProps) {
           backgroundImage: `url(${src})`,
           backgroundRepeat: "no-repeat",
           backgroundSize: `${ZOOM_FACTOR * 100}%`,
-          backgroundPosition: `-${bgX}px -${bgY}px`,
-          opacity: lens.visible ? 1 : 0,
-          transition: "opacity 0.15s ease",
+          opacity: 0,
           pointerEvents: "none",
           zIndex: 10,
+          willChange: "left, top",
         }}
       />
     </div>

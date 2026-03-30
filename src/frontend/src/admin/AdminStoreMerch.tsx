@@ -140,7 +140,7 @@ function compressImage(file: File): Promise<string> {
     reader.onload = (ev) => {
       const img = new Image();
       img.onload = () => {
-        const maxDim = 300;
+        const maxDim = 600;
         const scaleW = img.width > maxDim ? maxDim / img.width : 1;
         const scaleH = img.height > maxDim ? maxDim / img.height : 1;
         const scale = Math.min(scaleW, scaleH);
@@ -150,7 +150,7 @@ function compressImage(file: File): Promise<string> {
         canvas
           .getContext("2d")
           ?.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.4));
+        resolve(canvas.toDataURL("image/jpeg", 0.75));
       };
       img.src = ev.target?.result as string;
     };

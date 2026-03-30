@@ -176,9 +176,27 @@ export default function Store({ isDark }: Props) {
           } else if (s.key.startsWith("colorImages_")) {
             const id = s.key.replace("colorImages_", "");
             try {
-              ciMap[id] = JSON.parse(s.value);
+              const parsed = JSON.parse(s.value);
+              if (Array.isArray(parsed) && parsed.length > 0)
+                ciMap[id] = parsed;
             } catch {
               /* ignore */
+            }
+          } else if (s.key.startsWith("colorImg_")) {
+            const withoutPrefix = s.key.replace("colorImg_", "");
+            const lastUnderscore = withoutPrefix.lastIndexOf("_");
+            const id = withoutPrefix.substring(0, lastUnderscore);
+            const idx = Number.parseInt(
+              withoutPrefix.substring(lastUnderscore + 1),
+              10,
+            );
+            if (!Number.isNaN(idx) && id) {
+              if (!ciMap[id]) ciMap[id] = [];
+              try {
+                ciMap[id][idx] = JSON.parse(s.value);
+              } catch {
+                /* ignore */
+              }
             }
           } else if (s.key.startsWith("productImages_")) {
             const id = s.key.replace("productImages_", "");
@@ -455,6 +473,8 @@ export default function Store({ isDark }: Props) {
                       displayPrice={displayPrice}
                       sizeStock={sizeStockMap[item.id]}
                       colorStock={colorStockMap[item.id]}
+                      colorImages={colorImagesMap[item.id]}
+                      productImages={productImagesMap[item.id]}
                       onAddToCart={(size) => handleAddToCart(item, size)}
                       onViewDetails={() => setDetailItem(item)}
                     />
@@ -605,6 +625,8 @@ interface MerchCardProps {
   displayPrice: string;
   sizeStock?: Record<string, number>;
   colorStock?: ColorVariant[];
+  colorImages?: ColorVariantImages[];
+  productImages?: ProductImages;
   onAddToCart: (size?: string) => void;
   onViewDetails: () => void;
 }
@@ -619,6 +641,8 @@ function MerchCard({
   displayPrice,
   sizeStock,
   colorStock,
+  colorImages,
+  productImages,
   onAddToCart,
   onViewDetails,
 }: MerchCardProps) {
@@ -649,25 +673,37 @@ function MerchCard({
           background: isDark ? "rgba(212,175,55,0.06)" : "rgba(212,175,55,0.1)",
         }}
       >
-        {item.coverEmoji &&
-        (item.coverEmoji.startsWith("data:") ||
-          item.coverEmoji.startsWith("http")) ? (
-          <img
-            src={item.coverEmoji}
-            alt={item.name}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="text-center">
-            <div style={{ fontSize: "3rem" }}>{item.coverEmoji || "👕"}</div>
-            <div
-              className="text-xs mt-2"
-              style={{ color: "rgba(212,175,55,0.6)" }}
-            >
-              {item.name}
+        {(() => {
+          const thumbSrc =
+            item.category === "Clothing" &&
+            colorImages &&
+            colorImages.length > 0
+              ? colorImages[0].frontImage
+              : item.category !== "Clothing" && productImages?.primaryImage
+                ? productImages.primaryImage
+                : item.coverEmoji &&
+                    (item.coverEmoji.startsWith("data:") ||
+                      item.coverEmoji.startsWith("http"))
+                  ? item.coverEmoji
+                  : null;
+          return thumbSrc ? (
+            <img
+              src={thumbSrc}
+              alt={item.name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="text-center">
+              <div style={{ fontSize: "3rem" }}>{item.coverEmoji || "👕"}</div>
+              <div
+                className="text-xs mt-2"
+                style={{ color: "rgba(212,175,55,0.6)" }}
+              >
+                {item.name}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
         {hasizes(item, sizeStock) && (
           <div
             className="absolute top-2 right-2 text-xs px-2 py-0.5 rounded-full"

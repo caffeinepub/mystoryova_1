@@ -487,7 +487,7 @@ export default function AdminBooks() {
                         reader.onload = (ev) => {
                           const img = new Image();
                           img.onload = () => {
-                            const maxW = 800;
+                            const maxW = 600;
                             const scale =
                               img.width > maxW ? maxW / img.width : 1;
                             const canvas = document.createElement("canvas");
@@ -506,7 +506,7 @@ export default function AdminBooks() {
                               ...p,
                               coverImageUrl: canvas.toDataURL(
                                 "image/jpeg",
-                                0.7,
+                                0.75,
                               ),
                             }));
                           };

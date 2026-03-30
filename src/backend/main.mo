@@ -10,7 +10,7 @@ import MixinStorage "blob-storage/Mixin";
 
 
 
-actor {
+persistent actor {
   include MixinStorage();
 
   // Helper Functions
