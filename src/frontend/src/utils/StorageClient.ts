@@ -442,6 +442,7 @@ class StorageGatewayClient {
         project_id: projectId,
         headers: blobHashTree.headers,
         auth: {
+          // certificateBytes is guaranteed to be a proper Uint8Array at this point
           OwnerEgressSignature: Array.from(certificateBytes),
         },
       };
@@ -483,16 +484,64 @@ export class StorageClient {
 
   private async getCertificate(hash: string): Promise<Uint8Array> {
     const args = IDL.encode([IDL.Text], [hash]);
-    const result = await this.agent.call(this.backendCanisterId, {
-      methodName: "_caffeineStorageCreateCertificate",
-      arg: args,
-    });
-    const respone = result.response.body;
-    if (isV3ResponseBody(respone)) {
-      console.log("Certificate:", respone.certificate);
-      return respone.certificate;
+
+    let result: Awaited<ReturnType<HttpAgent["call"]>>;
+    try {
+      result = await this.agent.call(this.backendCanisterId, {
+        methodName: "_caffeineStorageCreateCertificate",
+        arg: args,
+      });
+    } catch (callError) {
+      throw new Error(
+        `Certificate call failed: ${
+          callError instanceof Error ? callError.message : String(callError)
+        }`,
+      );
     }
-    throw new Error("Expected v3 response body");
+
+    // V3 sync path: certificate is inline in the response body.
+    // CRITICAL: must wrap in new Uint8Array() because the raw value is an
+    // ArrayBuffer, and Array.from(ArrayBuffer) returns [] (empty) — not bytes.
+    const responseBody = result.response.body;
+    if (isV3ResponseBody(responseBody) && responseBody.certificate) {
+      return new Uint8Array(
+        responseBody.certificate as ArrayBuffer | Uint8Array,
+      );
+    }
+
+    // V2 async fallback: poll readState until the certificate is available
+    const requestId = result.requestId;
+    if (!requestId) {
+      throw new Error(
+        "Upload authorization failed: no certificate or requestId in response.",
+      );
+    }
+
+    const statusPath = [
+      new TextEncoder().encode("request_status"),
+      new Uint8Array(requestId as ArrayBuffer | Uint8Array),
+    ];
+
+    const MAX_POLL_ATTEMPTS = 20;
+    const POLL_DELAY_MS = 2000;
+
+    for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
+      await new Promise((r) => setTimeout(r, POLL_DELAY_MS));
+      try {
+        const stateResp = await this.agent.readState(this.backendCanisterId, {
+          paths: [statusPath],
+        });
+        if (stateResp.certificate && stateResp.certificate.byteLength > 0) {
+          return new Uint8Array(stateResp.certificate);
+        }
+      } catch {
+        // continue polling
+      }
+    }
+
+    throw new Error(
+      "Upload authorization timed out waiting for IC certificate. Please try again.",
+    );
   }
 
   public async putFile(

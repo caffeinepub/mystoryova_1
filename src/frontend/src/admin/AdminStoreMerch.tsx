@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import type { MerchItem } from "../backend.d";
 import { MERCH_ITEMS } from "../data/seedStore";
 import { useActor } from "../hooks/useActor";
+import { useStorageClient } from "../utils/useStorageClient";
 
 const CATEGORIES = [
   "Lifestyle",
@@ -133,31 +134,6 @@ function formToMerch(f: FormState): MerchItem {
   };
 }
 
-function compressImage(file: File): Promise<string> {
-  // Cap at 300px to keep each base64 image well under 100KB (ICP 2MB message limit)
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = () => {
-        const maxDim = 600;
-        const scaleW = img.width > maxDim ? maxDim / img.width : 1;
-        const scaleH = img.height > maxDim ? maxDim / img.height : 1;
-        const scale = Math.min(scaleW, scaleH);
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
-        canvas
-          .getContext("2d")
-          ?.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.75));
-      };
-      img.src = ev.target?.result as string;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
 function merchToForm(
   m: MerchItem,
   freeShipping: boolean,
@@ -213,6 +189,8 @@ function ImageSlot({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const [uploading, setUploading] = useState(false);
+  const { uploadImage: _uploadImage } = useStorageClient();
   return (
     <div className="flex flex-col gap-1.5">
       <Label style={{ color: "#888", fontSize: "0.7rem" }}>
@@ -256,7 +234,7 @@ function ImageSlot({
                 padding: "0 4px",
               }}
             >
-              Upload
+              {uploading ? "..." : "Upload"}
             </span>
             <input
               type="file"
@@ -265,8 +243,18 @@ function ImageSlot({
               onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                const compressed = await compressImage(file);
-                onChange(compressed);
+                setUploading(true);
+                try {
+                  const url = await _uploadImage(file);
+                  onChange(url);
+                } catch (err) {
+                  console.error("Upload failed:", err);
+                  toast.error(
+                    `Upload failed: ${err instanceof Error ? err.message : String(err)}`,
+                  );
+                } finally {
+                  setUploading(false);
+                }
                 e.target.value = "";
               }}
             />
@@ -301,6 +289,8 @@ export default function AdminStoreMerch() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [uploadingCoverEmoji, setUploadingCoverEmoji] = useState(false);
+  const { uploadImage } = useStorageClient();
   const [activeColorImageIdx, setActiveColorImageIdx] = useState(0);
 
   async function load() {
@@ -326,14 +316,14 @@ export default function AdminStoreMerch() {
           const id = s.key.replace("sizeStock_", "");
           try {
             ssMap[id] = JSON.parse(s.value);
-          } catch {
+          } catch (_uploadErr) {
             /* ignore */
           }
         } else if (s.key.startsWith("colorStock_")) {
           const id = s.key.replace("colorStock_", "");
           try {
             csMap[id] = JSON.parse(s.value);
-          } catch {
+          } catch (_uploadErr) {
             /* ignore */
           }
         } else if (s.key.startsWith("colorImages_")) {
@@ -342,7 +332,7 @@ export default function AdminStoreMerch() {
           if (!ciMap[id]) {
             try {
               ciMap[id] = JSON.parse(s.value);
-            } catch {
+            } catch (_uploadErr) {
               /* ignore */
             }
           }
@@ -358,7 +348,7 @@ export default function AdminStoreMerch() {
             if (!ciMap[id]) ciMap[id] = [];
             try {
               ciMap[id][idx] = JSON.parse(s.value);
-            } catch {
+            } catch (_uploadErr) {
               /* ignore */
             }
           }
@@ -366,7 +356,7 @@ export default function AdminStoreMerch() {
           const id = s.key.replace("productImages_", "");
           try {
             piMap[id] = JSON.parse(s.value);
-          } catch {
+          } catch (_uploadErr) {
             /* ignore */
           }
         }
@@ -376,7 +366,7 @@ export default function AdminStoreMerch() {
       setColorStockMap(csMap);
       setColorImagesMap(ciMap);
       setProductImagesMap(piMap);
-    } catch {
+    } catch (_uploadErr) {
       // error ignored
     } finally {
       setLoading(false);
@@ -966,8 +956,17 @@ export default function AdminStoreMerch() {
                       onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        const compressed = await compressImage(file);
-                        setForm((p) => ({ ...p, coverEmoji: compressed }));
+                        setUploadingCoverEmoji(true);
+                        try {
+                          const url = await uploadImage(file);
+                          setForm((p) => ({ ...p, coverEmoji: url }));
+                        } catch (uploadErr) {
+                          toast.error(
+                            `Upload failed: ${uploadErr instanceof Error ? uploadErr.message : String(uploadErr)}`,
+                          );
+                        } finally {
+                          setUploadingCoverEmoji(false);
+                        }
                         e.target.value = "";
                       }}
                     />
@@ -982,7 +981,7 @@ export default function AdminStoreMerch() {
                         cursor: "pointer",
                       }}
                     >
-                      Upload
+                      {uploadingCoverEmoji ? "Uploading..." : "Upload"}
                     </span>
                   </label>
                 </div>
