@@ -6,6 +6,7 @@ export interface CartItem {
   quantity: number;
   accessLink?: string;
   currency?: "INR" | "USD";
+  selectedColor?: string;
 }
 
 const CART_KEY = "mystoryova_cart";

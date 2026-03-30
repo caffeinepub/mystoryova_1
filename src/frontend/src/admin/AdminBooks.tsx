@@ -38,6 +38,14 @@ const GENRES = [
   "Other",
 ];
 
+function icErrMsg(err: unknown): string {
+  if (err instanceof Error) {
+    const m = err.message.match(/with message:\s*'([^']+)'/s);
+    return m ? m[1].slice(0, 120) : err.message.slice(0, 120);
+  }
+  return String(err).slice(0, 120);
+}
+
 function slugify(title: string) {
   return `book-${title
     .toLowerCase()
@@ -164,8 +172,9 @@ export default function AdminBooks() {
         toast.success("Book added");
       }
       setShowForm(false);
-    } catch {
-      toast.error("Failed to save book");
+    } catch (err) {
+      console.error("Admin save error:", err);
+      toast.error(`Failed to save: ${icErrMsg(err)}`);
       setSaving(false);
       return;
     }
@@ -180,8 +189,9 @@ export default function AdminBooks() {
       await actor.deleteBook(idToDelete);
       toast.success("Book deleted");
       setDeleteId(null);
-    } catch {
-      toast.error("Failed to delete");
+    } catch (err) {
+      console.error("Admin save error:", err);
+      toast.error(`Delete failed: ${icErrMsg(err)}`);
       return;
     }
     await load();
@@ -194,8 +204,9 @@ export default function AdminBooks() {
       for (const b of SEED_BOOKS) await actor.addBook(b);
       toast.success(`Seeded ${SEED_BOOKS.length} books`);
       await load();
-    } catch {
-      toast.error("Seed failed");
+    } catch (err) {
+      console.error("Admin save error:", err);
+      toast.error(`Seed failed: ${icErrMsg(err)}`);
     }
     setSaving(false);
   }

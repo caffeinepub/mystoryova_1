@@ -18,6 +18,12 @@ interface Props {
   isDark: boolean;
 }
 
+interface ColorVariant {
+  name: string;
+  hex: string;
+  stock: number;
+}
+
 const SEED_AUDIOBOOKS: Audiobook[] = AUDIOBOOKS.map((a) => ({
   id: a.id,
   name: a.name,
@@ -96,6 +102,9 @@ export default function Store({ isDark }: Props) {
   const [sizeStockMap, setSizeStockMap] = useState<
     Record<string, Record<string, number>>
   >({});
+  const [colorStockMap, setColorStockMap] = useState<
+    Record<string, ColorVariant[]>
+  >({});
   const [loading, setLoading] = useState(true);
   const [currency, setCurrency] = useState<Currency>("INR");
   const [activeTab, setActiveTab] = useState<"audiobooks" | "merch">(
@@ -133,6 +142,7 @@ export default function Store({ isDark }: Props) {
       try {
         const settings = await actor.getAllSettings();
         const ssMap: Record<string, Record<string, number>> = {};
+        const csMap: Record<string, ColorVariant[]> = {};
         for (const s of settings) {
           if (s.key.startsWith("sizeStock_")) {
             const id = s.key.replace("sizeStock_", "");
@@ -141,9 +151,20 @@ export default function Store({ isDark }: Props) {
             } catch {
               // ignore
             }
+          } else if (s.key.startsWith("colorStock_")) {
+            const id = s.key.replace("colorStock_", "");
+            try {
+              const parsed = JSON.parse(s.value);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                csMap[id] = parsed;
+              }
+            } catch {
+              // ignore
+            }
           }
         }
         setSizeStockMap(ssMap);
+        setColorStockMap(csMap);
       } catch {
         // Settings failed - products still show
       }
@@ -177,7 +198,11 @@ export default function Store({ isDark }: Props) {
     });
   }
 
-  function handleAddToCart(item: MerchItem, selectedSize?: string) {
+  function handleAddToCart(
+    item: MerchItem,
+    selectedSize?: string,
+    selectedColor?: string,
+  ) {
     const link = MERCH_PAYMENT_LINKS.find((l) => l.productId === item.id);
     const price =
       currency === "INR"
@@ -187,7 +212,7 @@ export default function Store({ isDark }: Props) {
         : link
           ? link.priceUSD
           : Number(item.priceUSD) / 100;
-    const name = selectedSize ? `${item.name} (${selectedSize})` : item.name;
+    const name = `${item.name}${selectedSize ? ` (${selectedSize})` : ""}${selectedColor ? ` — ${selectedColor}` : ""}`;
     addToCart({
       id: item.id,
       name,
@@ -195,6 +220,7 @@ export default function Store({ isDark }: Props) {
       quantity: 1,
       type: "merch",
       currency,
+      selectedColor,
     });
     window.dispatchEvent(new Event("cart-update"));
     toast.success(`${name} added to cart!`);
@@ -400,6 +426,7 @@ export default function Store({ isDark }: Props) {
                       mutedColor={mutedColor}
                       displayPrice={displayPrice}
                       sizeStock={sizeStockMap[item.id]}
+                      colorStock={colorStockMap[item.id]}
                       onAddToCart={(size) => handleAddToCart(item, size)}
                       onViewDetails={() => setDetailItem(item)}
                     />
@@ -416,6 +443,7 @@ export default function Store({ isDark }: Props) {
         <MerchDetailModal
           item={detailItem}
           sizeStock={sizeStockMap[detailItem.id]}
+          colorStock={colorStockMap[detailItem.id]}
           displayPrice={(() => {
             const link = MERCH_PAYMENT_LINKS.find(
               (l) => l.productId === detailItem.id,
@@ -429,8 +457,8 @@ export default function Store({ isDark }: Props) {
                 : `$${(Number(detailItem.priceUSD) / 100).toFixed(2)}`;
           })()}
           onClose={() => setDetailItem(null)}
-          onAddToCart={(size) => {
-            handleAddToCart(detailItem, size);
+          onAddToCart={(size, color) => {
+            handleAddToCart(detailItem, size, color);
             setDetailItem(null);
           }}
         />
@@ -439,7 +467,7 @@ export default function Store({ isDark }: Props) {
   );
 }
 
-// ─── AudiobookCard ────────────────────────────────────────────────────────────
+// ─── AudiobookCard ──────────────────────────────────────────────────────────────────────────────
 
 interface AudiobookCardProps {
   ab: Audiobook;
@@ -535,7 +563,7 @@ function AudiobookCard({
   );
 }
 
-// ─── MerchCard ────────────────────────────────────────────────────────────────
+// ─── MerchCard ────────────────────────────────────────────────────────────────────────────────────
 
 interface MerchCardProps {
   item: MerchItem;
@@ -546,6 +574,7 @@ interface MerchCardProps {
   mutedColor: string;
   displayPrice: string;
   sizeStock?: Record<string, number>;
+  colorStock?: ColorVariant[];
   onAddToCart: (size?: string) => void;
   onViewDetails: () => void;
 }
@@ -559,10 +588,12 @@ function MerchCard({
   mutedColor,
   displayPrice,
   sizeStock,
+  colorStock,
   onAddToCart,
   onViewDetails,
 }: MerchCardProps) {
   const [hovered, setHovered] = useState(false);
+  const hasColors = colorStock && colorStock.length > 0;
 
   return (
     <div
@@ -635,9 +666,33 @@ function MerchCard({
             {item.category}
           </span>
         </div>
-        <p className="text-xs mb-4 line-clamp-2" style={{ color: mutedColor }}>
+        <p className="text-xs mb-3 line-clamp-2" style={{ color: mutedColor }}>
           {item.description}
         </p>
+        {/* Color swatches preview */}
+        {hasColors && (
+          <div className="flex items-center gap-1 mb-3">
+            {colorStock.slice(0, 6).map((c) => (
+              <span
+                key={c.hex + c.name}
+                title={c.name}
+                style={{
+                  display: "inline-block",
+                  width: 14,
+                  height: 14,
+                  borderRadius: "50%",
+                  background: c.hex,
+                  border: "1px solid rgba(255,255,255,0.2)",
+                }}
+              />
+            ))}
+            {colorStock.length > 6 && (
+              <span style={{ color: "#666", fontSize: "0.7rem" }}>
+                +{colorStock.length - 6}
+              </span>
+            )}
+          </div>
+        )}
         <div className="mt-auto">
           <div className="flex items-center justify-between mb-3">
             <span className="text-lg font-bold" style={{ color: "#D4AF37" }}>
@@ -657,7 +712,7 @@ function MerchCard({
             >
               View Details
             </button>
-            {!hasizes(item, sizeStock) && (
+            {!hasizes(item, sizeStock) && !hasColors && (
               <button
                 type="button"
                 data-ocid="store.merch.primary_button"
@@ -687,33 +742,46 @@ function hasizes(item: MerchItem, sizeStock?: Record<string, number>): boolean {
   );
 }
 
-// ─── MerchDetailModal ─────────────────────────────────────────────────────────
+// ─── MerchDetailModal ───────────────────────────────────────────────────────────────────────────────────
 
 const SIZES = ["XS", "S", "M", "L", "XL", "XXL"] as const;
 
 interface MerchDetailModalProps {
   item: MerchItem;
   sizeStock?: Record<string, number>;
+  colorStock?: ColorVariant[];
   displayPrice: string;
   onClose: () => void;
-  onAddToCart: (size?: string) => void;
+  onAddToCart: (size?: string, color?: string) => void;
 }
 
 function MerchDetailModal({
   item,
   sizeStock,
+  colorStock,
   displayPrice,
   onClose,
   onAddToCart,
 }: MerchDetailModalProps) {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [showSizeChart, setShowSizeChart] = useState(false);
   const showSizes =
     item.category === "Clothing" &&
     sizeStock &&
     Object.values(sizeStock).some((v) => v > 0);
-  const sizeRequired = showSizes;
-  const canAdd = !sizeRequired || !!selectedSize;
+  const sizeRequired = !!showSizes;
+  const colorRequired = !!(colorStock && colorStock.length > 0);
+  const canAdd =
+    (!sizeRequired || !!selectedSize) && (!colorRequired || !!selectedColor);
+
+  const addLabel = (() => {
+    if (selectedSize && selectedColor)
+      return `Add to Cart — ${selectedSize} / ${selectedColor}`;
+    if (selectedSize) return `Add to Cart — Size ${selectedSize}`;
+    if (selectedColor) return `Add to Cart — ${selectedColor}`;
+    return "Add to Cart";
+  })();
 
   return (
     <div
@@ -889,12 +957,71 @@ function MerchDetailModal({
             </div>
           )}
 
+          {/* Color Selector */}
+          {colorRequired && colorStock && (
+            <div className="flex flex-col gap-3">
+              <span
+                className="text-xs font-semibold tracking-wider uppercase"
+                style={{ color: "#888" }}
+              >
+                Select Color
+              </span>
+              <div className="flex flex-wrap gap-3">
+                {colorStock.map((c) => {
+                  const isSelected = selectedColor === c.name;
+                  const isDisabled = c.stock === 0;
+                  return (
+                    <button
+                      key={c.hex + c.name}
+                      type="button"
+                      disabled={isDisabled}
+                      title={`${c.name}${c.stock > 0 ? ` (${c.stock} left)` : " — Out of stock"}`}
+                      onClick={() =>
+                        setSelectedColor(isSelected ? null : c.name)
+                      }
+                      className="relative transition-all duration-200"
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: "50%",
+                        background: c.hex,
+                        border: isSelected
+                          ? "2px solid #D4AF37"
+                          : "1px solid rgba(255,255,255,0.2)",
+                        boxShadow: isSelected
+                          ? "0 0 0 3px rgba(212,175,55,0.25)"
+                          : "none",
+                        opacity: isDisabled ? 0.35 : 1,
+                        cursor: isDisabled ? "not-allowed" : "pointer",
+                        outline: "none",
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              {selectedColor ? (
+                <p className="text-xs font-medium" style={{ color: "#D4AF37" }}>
+                  {selectedColor}
+                </p>
+              ) : (
+                <p
+                  className="text-xs"
+                  style={{ color: "rgba(212,175,55,0.6)" }}
+                >
+                  Select a color to continue.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Add to Cart */}
           <button
             type="button"
             data-ocid="store.merch.primary_button"
             disabled={!canAdd}
-            onClick={() => onAddToCart(selectedSize ?? undefined)}
+            onClick={() =>
+              onAddToCart(selectedSize ?? undefined, selectedColor ?? undefined)
+            }
             className="w-full py-3 rounded-xl text-sm font-bold transition-all duration-200"
             style={{
               background: canAdd
@@ -904,9 +1031,7 @@ function MerchDetailModal({
               cursor: canAdd ? "pointer" : "not-allowed",
             }}
           >
-            {selectedSize
-              ? `Add to Cart — Size ${selectedSize}`
-              : "Add to Cart"}
+            {addLabel}
           </button>
         </div>
 

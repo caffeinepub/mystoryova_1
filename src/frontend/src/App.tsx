@@ -5,6 +5,7 @@ import AdminApp from "./admin/AdminApp";
 import Footer from "./components/Footer";
 import Header from "./components/Header";
 import About from "./pages/About";
+import Account from "./pages/Account";
 import Blog from "./pages/Blog";
 import BlogPost from "./pages/BlogPost";
 import BookDetail from "./pages/BookDetail";
@@ -49,6 +50,7 @@ function PublicLayout({
           <Route path="/store" element={<Store isDark={isDark} />} />
           <Route path="/cart" element={<Cart isDark={isDark} />} />
           <Route path="/checkout" element={<Checkout isDark={isDark} />} />
+          <Route path="/account" element={<Account isDark={isDark} />} />
           <Route
             path="/order-tracking"
             element={<OrderTracking isDark={isDark} />}

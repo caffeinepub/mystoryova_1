@@ -21,7 +21,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Edit2, Plus, Trash2 } from "lucide-react";
+import { Edit2, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { MerchItem } from "../backend.d";
@@ -41,6 +41,12 @@ const SIZES = ["XS", "S", "M", "L", "XL", "XXL"] as const;
 type SizeKey = (typeof SIZES)[number];
 type SizeStock = Record<SizeKey, string>;
 
+interface ColorEntry {
+  name: string;
+  hex: string;
+  stock: string;
+}
+
 interface FormState {
   id: string;
   name: string;
@@ -53,6 +59,7 @@ interface FormState {
   isActive: boolean;
   freeShipping: boolean;
   sizeStock: SizeStock;
+  colorStock: ColorEntry[];
 }
 
 const EMPTY_SIZE_STOCK: SizeStock = {
@@ -76,7 +83,16 @@ const EMPTY_FORM: FormState = {
   isActive: true,
   freeShipping: false,
   sizeStock: { ...EMPTY_SIZE_STOCK },
+  colorStock: [],
 };
+
+function icErrMsg(err: unknown): string {
+  if (err instanceof Error) {
+    const m = err.message.match(/with message:\s*'([^']+)'/s);
+    return m ? m[1].slice(0, 120) : err.message.slice(0, 120);
+  }
+  return String(err).slice(0, 120);
+}
 
 function formToMerch(f: FormState): MerchItem {
   return {
@@ -96,8 +112,13 @@ function merchToForm(
   m: MerchItem,
   freeShipping: boolean,
   sizeStockMap: Record<string, Record<string, number>>,
+  colorStockMap: Record<
+    string,
+    Array<{ name: string; hex: string; stock: number }>
+  >,
 ): FormState {
   const ss = sizeStockMap[m.id];
+  const cs = colorStockMap[m.id] ?? [];
   return {
     id: m.id,
     name: m.name,
@@ -114,8 +135,15 @@ function merchToForm(
           Object.entries(ss).map(([k, v]) => [k, String(v)]),
         ) as SizeStock)
       : { ...EMPTY_SIZE_STOCK },
+    colorStock: cs.map((c) => ({ ...c, stock: String(c.stock) })),
   };
 }
+
+const inputStyle = {
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid rgba(212,175,55,0.2)",
+  color: "#f0ead6",
+};
 
 export default function AdminStoreMerch() {
   const { actor } = useActor();
@@ -125,6 +153,9 @@ export default function AdminStoreMerch() {
   >({});
   const [sizeStockMap, setSizeStockMap] = useState<
     Record<string, Record<string, number>>
+  >({});
+  const [colorStockMap, setColorStockMap] = useState<
+    Record<string, Array<{ name: string; hex: string; stock: number }>>
   >({});
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -143,6 +174,10 @@ export default function AdminStoreMerch() {
       setItems([...data].reverse());
       const shippingMap: Record<string, boolean> = {};
       const ssMap: Record<string, Record<string, number>> = {};
+      const csMap: Record<
+        string,
+        Array<{ name: string; hex: string; stock: number }>
+      > = {};
       for (const s of allSettings) {
         if (s.key.startsWith("shippingFree_")) {
           shippingMap[s.key.replace("shippingFree_", "")] = s.value === "true";
@@ -153,10 +188,18 @@ export default function AdminStoreMerch() {
           } catch {
             // ignore
           }
+        } else if (s.key.startsWith("colorStock_")) {
+          const id = s.key.replace("colorStock_", "");
+          try {
+            csMap[id] = JSON.parse(s.value);
+          } catch {
+            // ignore
+          }
         }
       }
       setFreeShippingMap(shippingMap);
       setSizeStockMap(ssMap);
+      setColorStockMap(csMap);
     } catch {
       // error ignored
     } finally {
@@ -176,7 +219,14 @@ export default function AdminStoreMerch() {
   }
   function openEdit(m: MerchItem) {
     setEditItem(m);
-    setForm(merchToForm(m, freeShippingMap[m.id] ?? false, sizeStockMap));
+    setForm(
+      merchToForm(
+        m,
+        freeShippingMap[m.id] ?? false,
+        sizeStockMap,
+        colorStockMap,
+      ),
+    );
     setShowForm(true);
   }
 
@@ -211,9 +261,19 @@ export default function AdminStoreMerch() {
           value: JSON.stringify(numericStock),
         });
       }
+      // Save color stock for all categories
+      const numericColors = form.colorStock.map((c) => ({
+        ...c,
+        stock: Number(c.stock) || 0,
+      }));
+      await actor.updateSetting({
+        key: `colorStock_${item.id}`,
+        value: JSON.stringify(numericColors),
+      });
       setShowForm(false);
-    } catch {
-      toast.error("Save failed");
+    } catch (err) {
+      console.error("Admin save error:", err);
+      toast.error(`Save failed: ${icErrMsg(err)}`);
       setSaving(false);
       return;
     }
@@ -231,10 +291,12 @@ export default function AdminStoreMerch() {
         value: "",
       });
       await actor.updateSetting({ key: `sizeStock_${idToDelete}`, value: "" });
+      await actor.updateSetting({ key: `colorStock_${idToDelete}`, value: "" });
       toast.success("Deleted");
       setDeleteId(null);
-    } catch {
-      toast.error("Delete failed");
+    } catch (err) {
+      console.error("Admin save error:", err);
+      toast.error(`Delete failed: ${icErrMsg(err)}`);
       return;
     }
     await load();
@@ -248,52 +310,76 @@ export default function AdminStoreMerch() {
         await actor.createMerchItem({
           id: m.id,
           name: m.name,
-          description: m.description,
-          coverEmoji: m.coverEmoji,
-          category: m.category,
-          priceINR: BigInt(m.price * 100),
-          priceUSD: BigInt(Math.round(m.priceUSD * 100)),
+          description: m.description ?? "",
+          coverEmoji: m.coverEmoji ?? "🛍️",
+          category: m.category ?? "Lifestyle",
+          priceINR: BigInt(Math.round((m.price ?? 0) * 100)),
+          priceUSD: BigInt(Math.round((m.priceUSD ?? 0) * 100)),
           razorpayUrl: "",
           isActive: true,
         });
       }
-      toast.success(`Seeded ${MERCH_ITEMS.length} merch items`);
+      toast.success("Seeded default merch items");
+    } catch (err) {
+      toast.error(`Seed failed: ${icErrMsg(err)}`);
+    } finally {
+      setSaving(false);
       await load();
-    } catch {
-      toast.error("Seed failed");
     }
-    setSaving(false);
   }
 
-  const cardStyle = {
-    background: "rgba(255,255,255,0.03)",
-    border: "1px solid rgba(212,175,55,0.12)",
-  };
-  const inputStyle = {
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(212,175,55,0.2)",
-    color: "#f0ead6",
-  };
+  function addColorEntry() {
+    setForm((p) => ({
+      ...p,
+      colorStock: [...p.colorStock, { name: "", hex: "#000000", stock: "0" }],
+    }));
+  }
+
+  function removeColorEntry(idx: number) {
+    setForm((p) => ({
+      ...p,
+      colorStock: p.colorStock.filter((_, i) => i !== idx),
+    }));
+  }
+
+  function updateColorEntry(
+    idx: number,
+    field: keyof ColorEntry,
+    value: string,
+  ) {
+    setForm((p) => ({
+      ...p,
+      colorStock: p.colorStock.map((c, i) =>
+        i === idx ? { ...c, [field]: value } : c,
+      ),
+    }));
+  }
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <p className="text-sm" style={{ color: "#555" }}>
-          Manage merchandise listings in the store.
-        </p>
-        <div className="flex gap-2">
-          {items.length === 0 && (
-            <Button
-              data-ocid="admin.merch.secondary_button"
-              variant="outline"
-              size="sm"
-              onClick={seedDefaults}
-              disabled={saving}
-              style={{ borderColor: "rgba(212,175,55,0.2)", color: "#D4AF37" }}
-            >
-              Seed Defaults
-            </Button>
-          )}
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h2
+          className="text-2xl font-bold"
+          style={{ fontFamily: "Playfair Display, serif", color: "#D4AF37" }}
+        >
+          Merchandise
+        </h2>
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            data-ocid="admin.merch.secondary_button"
+            variant="outline"
+            size="sm"
+            onClick={seedDefaults}
+            disabled={saving}
+            style={{
+              borderColor: "rgba(212,175,55,0.2)",
+              color: "#888",
+              fontSize: "0.75rem",
+            }}
+          >
+            Seed Defaults
+          </Button>
           <Button
             data-ocid="admin.merch.primary_button"
             size="sm"
@@ -304,178 +390,199 @@ export default function AdminStoreMerch() {
               fontWeight: 700,
             }}
           >
-            <Plus size={15} className="mr-1" /> Add Item
+            <Plus size={14} className="mr-1" /> Add Item
           </Button>
         </div>
       </div>
 
-      <div className="rounded-xl overflow-hidden" style={cardStyle}>
-        {loading ? (
-          <div className="p-5 flex flex-col gap-2">
-            {[1, 2, 3].map((i) => (
-              <Skeleton
-                key={i}
-                className="h-14"
-                style={{ background: "rgba(255,255,255,0.04)" }}
-              />
-            ))}
-          </div>
-        ) : items.length === 0 ? (
-          <div
-            data-ocid="admin.merch.empty_state"
-            className="p-10 text-center"
-            style={{ color: "#555" }}
-          >
-            No merch items yet.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr
-                  style={{
-                    borderBottom: "1px solid rgba(212,175,55,0.1)",
-                    background: "rgba(0,0,0,0.2)",
-                  }}
-                >
-                  {[
-                    "Name",
-                    "Category",
-                    "Sizes",
-                    "Shipping",
-                    "Price INR",
-                    "Price USD",
-                    "Active",
-                    "Actions",
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="text-left py-3 px-4 text-xs uppercase tracking-wider"
-                      style={{ color: "#555" }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item, i) => (
-                  <tr
-                    key={item.id}
-                    data-ocid={`admin.merch.row.${i + 1}`}
-                    style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}
+      {/* Table */}
+      {loading ? (
+        <div className="flex flex-col gap-2">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-12 w-full rounded-xl" />
+          ))}
+        </div>
+      ) : items.length === 0 ? (
+        <div
+          data-ocid="admin.merch.empty_state"
+          className="text-center py-16"
+          style={{ color: "#444" }}
+        >
+          No merch items yet. Add your first item or seed defaults.
+        </div>
+      ) : (
+        <div
+          className="overflow-x-auto rounded-xl"
+          style={{ border: "1px solid rgba(212,175,55,0.1)" }}
+        >
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ borderBottom: "1px solid rgba(212,175,55,0.1)" }}>
+                {[
+                  "Item",
+                  "Category",
+                  "Sizes",
+                  "Colors",
+                  "Shipping",
+                  "₹ Price",
+                  "$ Price",
+                  "Status",
+                  "",
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="py-3 px-4 text-left font-medium"
+                    style={{
+                      color: "#555",
+                      fontSize: "0.7rem",
+                      textTransform: "uppercase",
+                    }}
                   >
-                    <td
-                      className="py-3 px-4 font-semibold"
-                      style={{ color: "#f0ead6" }}
-                    >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, i) => (
+                <tr
+                  key={item.id}
+                  data-ocid={`admin.merch.row.${i + 1}`}
+                  style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}
+                >
+                  <td
+                    className="py-3 px-4 font-medium"
+                    style={{ color: "#f0ead6", maxWidth: 180 }}
+                  >
+                    <div className="flex items-center gap-2">
                       {item.coverEmoji &&
                       (item.coverEmoji.startsWith("data:") ||
                         item.coverEmoji.startsWith("http")) ? (
                         <img
                           src={item.coverEmoji}
                           alt={item.name}
-                          className="inline-block rounded object-cover mr-2"
-                          style={{
-                            width: 32,
-                            height: 32,
-                            verticalAlign: "middle",
-                          }}
+                          className="rounded object-cover flex-shrink-0"
+                          style={{ width: 28, height: 28 }}
                         />
                       ) : (
                         <span className="mr-1">{item.coverEmoji}</span>
                       )}
                       {item.name}
-                    </td>
-                    <td className="py-3 px-4" style={{ color: "#888" }}>
-                      {item.category}
-                    </td>
-                    <td className="py-3 px-4">
-                      {item.category === "Clothing" && sizeStockMap[item.id] ? (
-                        <span
-                          className="text-xs px-2 py-0.5 rounded-full"
-                          style={{
-                            background: "rgba(212,175,55,0.1)",
-                            color: "#D4AF37",
-                          }}
-                        >
-                          {SIZES.filter(
-                            (s) => (sizeStockMap[item.id]?.[s] ?? 0) > 0,
-                          ).join(", ") || "—"}
-                        </span>
-                      ) : (
-                        <span style={{ color: "#444" }}>—</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
+                    </div>
+                  </td>
+                  <td className="py-3 px-4" style={{ color: "#888" }}>
+                    {item.category}
+                  </td>
+                  <td className="py-3 px-4">
+                    {item.category === "Clothing" && sizeStockMap[item.id] ? (
                       <span
                         className="text-xs px-2 py-0.5 rounded-full"
                         style={{
-                          background: freeShippingMap[item.id]
-                            ? "rgba(34,197,94,0.12)"
-                            : "rgba(212,175,55,0.1)",
-                          color: freeShippingMap[item.id]
-                            ? "#22C55E"
-                            : "#D4AF37",
+                          background: "rgba(212,175,55,0.1)",
+                          color: "#D4AF37",
                         }}
                       >
-                        {freeShippingMap[item.id] ? "Free" : "Paid"}
+                        {SIZES.filter(
+                          (s) => (sizeStockMap[item.id]?.[s] ?? 0) > 0,
+                        ).join(", ") || "—"}
                       </span>
-                    </td>
-                    <td className="py-3 px-4" style={{ color: "#D4AF37" }}>
-                      ₹{(Number(item.priceINR) / 100).toFixed(0)}
-                    </td>
-                    <td className="py-3 px-4" style={{ color: "#D4AF37" }}>
-                      ${(Number(item.priceUSD) / 100).toFixed(2)}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span
-                        className="text-xs px-2 py-0.5 rounded-full"
-                        style={{
-                          background: item.isActive
-                            ? "rgba(34,197,94,0.15)"
-                            : "rgba(239,68,68,0.1)",
-                          color: item.isActive ? "#22C55E" : "#EF4444",
-                        }}
-                      >
-                        {item.isActive ? "Active" : "Hidden"}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          data-ocid={`admin.merch.edit_button.${i + 1}`}
-                          onClick={() => openEdit(item)}
-                          className="p-1.5 rounded"
-                          style={{
-                            color: "#D4AF37",
-                            background: "rgba(212,175,55,0.08)",
-                          }}
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          data-ocid={`admin.merch.delete_button.${i + 1}`}
-                          onClick={() => setDeleteId(item.id)}
-                          className="p-1.5 rounded"
-                          style={{
-                            color: "#EF4444",
-                            background: "rgba(239,68,68,0.08)",
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                    ) : (
+                      <span style={{ color: "#444" }}>—</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4">
+                    {colorStockMap[item.id]?.length > 0 ? (
+                      <div className="flex items-center gap-1">
+                        {colorStockMap[item.id].slice(0, 4).map((c) => (
+                          <span
+                            key={c.hex + c.name}
+                            title={`${c.name} (${c.stock})`}
+                            style={{
+                              display: "inline-block",
+                              width: 10,
+                              height: 10,
+                              borderRadius: "50%",
+                              background: c.hex,
+                              border: "1px solid rgba(255,255,255,0.2)",
+                            }}
+                          />
+                        ))}
+                        {colorStockMap[item.id].length > 4 && (
+                          <span style={{ color: "#555", fontSize: "0.7rem" }}>
+                            +{colorStockMap[item.id].length - 4}
+                          </span>
+                        )}
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                    ) : (
+                      <span style={{ color: "#444" }}>—</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4">
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full"
+                      style={{
+                        background: freeShippingMap[item.id]
+                          ? "rgba(34,197,94,0.12)"
+                          : "rgba(212,175,55,0.1)",
+                        color: freeShippingMap[item.id] ? "#22C55E" : "#D4AF37",
+                      }}
+                    >
+                      {freeShippingMap[item.id] ? "Free" : "Paid"}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4" style={{ color: "#D4AF37" }}>
+                    ₹{(Number(item.priceINR) / 100).toFixed(0)}
+                  </td>
+                  <td className="py-3 px-4" style={{ color: "#D4AF37" }}>
+                    ${(Number(item.priceUSD) / 100).toFixed(2)}
+                  </td>
+                  <td className="py-3 px-4">
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full"
+                      style={{
+                        background: item.isActive
+                          ? "rgba(34,197,94,0.15)"
+                          : "rgba(239,68,68,0.1)",
+                        color: item.isActive ? "#22C55E" : "#EF4444",
+                      }}
+                    >
+                      {item.isActive ? "Active" : "Hidden"}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4">
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        data-ocid={`admin.merch.edit_button.${i + 1}`}
+                        onClick={() => openEdit(item)}
+                        className="p-1.5 rounded"
+                        style={{
+                          color: "#D4AF37",
+                          background: "rgba(212,175,55,0.08)",
+                        }}
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        data-ocid={`admin.merch.delete_button.${i + 1}`}
+                        onClick={() => setDeleteId(item.id)}
+                        className="p-1.5 rounded"
+                        style={{
+                          color: "#EF4444",
+                          background: "rgba(239,68,68,0.08)",
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {showForm && (
         <div
@@ -685,6 +792,105 @@ export default function AdminStoreMerch() {
                   </div>
                 </div>
               )}
+
+              {/* Color Stock — for all categories */}
+              <div
+                className="col-span-2 rounded-xl p-4 flex flex-col gap-3"
+                style={{
+                  background: "rgba(212,175,55,0.04)",
+                  border: "1px solid rgba(212,175,55,0.15)",
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <Label style={{ color: "#D4AF37", fontSize: "0.75rem" }}>
+                    🎨 Color Stock (define colors and their stock)
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={addColorEntry}
+                    className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold transition-all"
+                    style={{
+                      background: "rgba(212,175,55,0.12)",
+                      border: "1px solid rgba(212,175,55,0.3)",
+                      color: "#D4AF37",
+                    }}
+                  >
+                    <Plus size={12} /> Add Color
+                  </button>
+                </div>
+                {form.colorStock.length === 0 ? (
+                  <p className="text-xs" style={{ color: "#444" }}>
+                    No colors defined. Click "Add Color" to add color variants.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {form.colorStock.map((entry, idx) => (
+                      <div
+                        key={entry.hex + entry.name}
+                        className="flex items-center gap-2"
+                      >
+                        {/* Color swatch */}
+                        <div className="relative flex-shrink-0">
+                          <input
+                            type="color"
+                            value={entry.hex}
+                            onChange={(e) =>
+                              updateColorEntry(idx, "hex", e.target.value)
+                            }
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 8,
+                              border: "1px solid rgba(212,175,55,0.3)",
+                              background: "transparent",
+                              cursor: "pointer",
+                              padding: 2,
+                            }}
+                            title="Pick color"
+                          />
+                        </div>
+                        {/* Name */}
+                        <Input
+                          value={entry.name}
+                          onChange={(e) =>
+                            updateColorEntry(idx, "name", e.target.value)
+                          }
+                          placeholder="Color name (e.g. Black)"
+                          style={{ ...inputStyle, flex: 1, fontSize: "0.8rem" }}
+                        />
+                        {/* Stock */}
+                        <Input
+                          type="number"
+                          min="0"
+                          value={entry.stock}
+                          onChange={(e) =>
+                            updateColorEntry(idx, "stock", e.target.value)
+                          }
+                          placeholder="0"
+                          style={{
+                            ...inputStyle,
+                            width: 70,
+                            textAlign: "center",
+                            fontSize: "0.8rem",
+                          }}
+                        />
+                        {/* Remove */}
+                        <button
+                          type="button"
+                          onClick={() => removeColorEntry(idx)}
+                          className="p-1.5 rounded flex-shrink-0"
+                          style={{
+                            color: "#EF4444",
+                            background: "rgba(239,68,68,0.08)",
+                          }}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="col-span-2 flex flex-col gap-1">
                 <Label style={{ color: "#888", fontSize: "0.75rem" }}>

@@ -42,6 +42,20 @@ export const Book = IDL.Record({
   'genre' : IDL.Text,
   'formats' : IDL.Vec(BookFormat),
 });
+export const CustomerAddress = IDL.Record({
+  'id' : IDL.Text,
+  'country' : IDL.Text,
+  'city' : IDL.Text,
+  'fullName' : IDL.Text,
+  'line1' : IDL.Text,
+  'line2' : IDL.Text,
+  'state' : IDL.Text,
+  'addressLabel' : IDL.Text,
+  'isDefault' : IDL.Bool,
+  'customerId' : IDL.Text,
+  'phone' : IDL.Text,
+  'pincode' : IDL.Text,
+});
 export const Review = IDL.Record({
   'bookId' : IDL.Text,
   'reviewerName' : IDL.Text,
@@ -83,6 +97,16 @@ export const MerchItem = IDL.Record({
   'priceINR' : IDL.Nat,
   'priceUSD' : IDL.Nat,
 });
+export const ShippingAddress = IDL.Record({
+  'country' : IDL.Text,
+  'city' : IDL.Text,
+  'fullName' : IDL.Text,
+  'line1' : IDL.Text,
+  'line2' : IDL.Text,
+  'state' : IDL.Text,
+  'phone' : IDL.Text,
+  'pincode' : IDL.Text,
+});
 export const OrderItem = IDL.Record({
   'name' : IDL.Text,
   'productId' : IDL.Text,
@@ -100,10 +124,19 @@ export const Order = IDL.Record({
   'totalAmount' : IDL.Nat,
   'currency' : IDL.Text,
   'notes' : IDL.Text,
+  'shippingAddress' : IDL.Opt(ShippingAddress),
+  'customerId' : IDL.Opt(IDL.Text),
   'items' : IDL.Vec(OrderItem),
   'customerEmail' : IDL.Text,
 });
 export const Setting = IDL.Record({ 'key' : IDL.Text, 'value' : IDL.Text });
+export const CustomerAccount = IDL.Record({
+  'id' : IDL.Text,
+  'name' : IDL.Text,
+  'createdAt' : IDL.Int,
+  'email' : IDL.Text,
+  'passwordHash' : IDL.Text,
+});
 
 export const idlService = IDL.Service({
   '_caffeineStorageBlobIsLive' : IDL.Func(
@@ -134,8 +167,14 @@ export const idlService = IDL.Service({
   '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
   'addBlogPost' : IDL.Func([BlogPost], [], []),
   'addBook' : IDL.Func([Book], [], []),
+  'addCustomerAddress' : IDL.Func([CustomerAddress], [], []),
   'addReview' : IDL.Func([Review], [], []),
   'addSubscriber' : IDL.Func([IDL.Text], [], []),
+  'changeCustomerPassword' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text],
+      [IDL.Bool],
+      [],
+    ),
   'createAudiobook' : IDL.Func([Audiobook], [], []),
   'createCoupon' : IDL.Func([Coupon], [], []),
   'createMerchItem' : IDL.Func([MerchItem], [], []),
@@ -144,6 +183,7 @@ export const idlService = IDL.Service({
   'deleteBlogPost' : IDL.Func([IDL.Text], [], []),
   'deleteBook' : IDL.Func([IDL.Text], [], []),
   'deleteCoupon' : IDL.Func([IDL.Text], [], []),
+  'deleteCustomerAddress' : IDL.Func([IDL.Text], [], []),
   'deleteMerchItem' : IDL.Func([IDL.Text], [], []),
   'deleteOrder' : IDL.Func([IDL.Text], [], []),
   'getAllSettings' : IDL.Func([], [IDL.Vec(Setting)], ['query']),
@@ -156,6 +196,12 @@ export const idlService = IDL.Service({
   'getBooks' : IDL.Func([], [IDL.Vec(Book)], ['query']),
   'getCoupon' : IDL.Func([IDL.Text], [IDL.Opt(Coupon)], ['query']),
   'getCoupons' : IDL.Func([], [IDL.Vec(Coupon)], ['query']),
+  'getCustomer' : IDL.Func([IDL.Text], [IDL.Opt(CustomerAccount)], ['query']),
+  'getCustomerAddresses' : IDL.Func(
+      [IDL.Text],
+      [IDL.Vec(CustomerAddress)],
+      ['query'],
+    ),
   'getMerchItem' : IDL.Func([IDL.Text], [IDL.Opt(MerchItem)], ['query']),
   'getMerchItems' : IDL.Func([], [IDL.Vec(MerchItem)], ['query']),
   'getOrder' : IDL.Func([IDL.Text], [IDL.Opt(Order)], ['query']),
@@ -164,11 +210,24 @@ export const idlService = IDL.Service({
   'getSetting' : IDL.Func([IDL.Text], [IDL.Opt(Setting)], ['query']),
   'getSubscribers' : IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
   'incrementCouponUsage' : IDL.Func([IDL.Text], [], []),
+  'loginCustomer' : IDL.Func(
+      [IDL.Text, IDL.Text],
+      [IDL.Opt(CustomerAccount)],
+      [],
+    ),
+  'registerCustomer' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text],
+      [IDL.Opt(IDL.Text)],
+      [],
+    ),
   'removeSubscriber' : IDL.Func([IDL.Text], [], []),
+  'setDefaultAddress' : IDL.Func([IDL.Text, IDL.Text], [], []),
   'updateAudiobook' : IDL.Func([Audiobook], [], []),
   'updateAuthorBio' : IDL.Func([IDL.Text], [], []),
   'updateBlogPost' : IDL.Func([BlogPost], [], []),
   'updateBook' : IDL.Func([Book], [], []),
+  'updateCustomer' : IDL.Func([CustomerAccount], [], []),
+  'updateCustomerAddress' : IDL.Func([CustomerAddress], [], []),
   'updateMerchItem' : IDL.Func([MerchItem], [], []),
   'updateOrderStatus' : IDL.Func([IDL.Text, IDL.Text], [], []),
   'updateSetting' : IDL.Func([Setting], [], []),
@@ -212,6 +271,20 @@ export const idlFactory = ({ IDL }) => {
     'genre' : IDL.Text,
     'formats' : IDL.Vec(BookFormat),
   });
+  const CustomerAddress = IDL.Record({
+    'id' : IDL.Text,
+    'country' : IDL.Text,
+    'city' : IDL.Text,
+    'fullName' : IDL.Text,
+    'line1' : IDL.Text,
+    'line2' : IDL.Text,
+    'state' : IDL.Text,
+    'addressLabel' : IDL.Text,
+    'isDefault' : IDL.Bool,
+    'customerId' : IDL.Text,
+    'phone' : IDL.Text,
+    'pincode' : IDL.Text,
+  });
   const Review = IDL.Record({
     'bookId' : IDL.Text,
     'reviewerName' : IDL.Text,
@@ -253,6 +326,16 @@ export const idlFactory = ({ IDL }) => {
     'priceINR' : IDL.Nat,
     'priceUSD' : IDL.Nat,
   });
+  const ShippingAddress = IDL.Record({
+    'country' : IDL.Text,
+    'city' : IDL.Text,
+    'fullName' : IDL.Text,
+    'line1' : IDL.Text,
+    'line2' : IDL.Text,
+    'state' : IDL.Text,
+    'phone' : IDL.Text,
+    'pincode' : IDL.Text,
+  });
   const OrderItem = IDL.Record({
     'name' : IDL.Text,
     'productId' : IDL.Text,
@@ -270,10 +353,19 @@ export const idlFactory = ({ IDL }) => {
     'totalAmount' : IDL.Nat,
     'currency' : IDL.Text,
     'notes' : IDL.Text,
+    'shippingAddress' : IDL.Opt(ShippingAddress),
+    'customerId' : IDL.Opt(IDL.Text),
     'items' : IDL.Vec(OrderItem),
     'customerEmail' : IDL.Text,
   });
   const Setting = IDL.Record({ 'key' : IDL.Text, 'value' : IDL.Text });
+  const CustomerAccount = IDL.Record({
+    'id' : IDL.Text,
+    'name' : IDL.Text,
+    'createdAt' : IDL.Int,
+    'email' : IDL.Text,
+    'passwordHash' : IDL.Text,
+  });
   
   return IDL.Service({
     '_caffeineStorageBlobIsLive' : IDL.Func(
@@ -304,8 +396,14 @@ export const idlFactory = ({ IDL }) => {
     '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
     'addBlogPost' : IDL.Func([BlogPost], [], []),
     'addBook' : IDL.Func([Book], [], []),
+    'addCustomerAddress' : IDL.Func([CustomerAddress], [], []),
     'addReview' : IDL.Func([Review], [], []),
     'addSubscriber' : IDL.Func([IDL.Text], [], []),
+    'changeCustomerPassword' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text],
+        [IDL.Bool],
+        [],
+      ),
     'createAudiobook' : IDL.Func([Audiobook], [], []),
     'createCoupon' : IDL.Func([Coupon], [], []),
     'createMerchItem' : IDL.Func([MerchItem], [], []),
@@ -314,6 +412,7 @@ export const idlFactory = ({ IDL }) => {
     'deleteBlogPost' : IDL.Func([IDL.Text], [], []),
     'deleteBook' : IDL.Func([IDL.Text], [], []),
     'deleteCoupon' : IDL.Func([IDL.Text], [], []),
+    'deleteCustomerAddress' : IDL.Func([IDL.Text], [], []),
     'deleteMerchItem' : IDL.Func([IDL.Text], [], []),
     'deleteOrder' : IDL.Func([IDL.Text], [], []),
     'getAllSettings' : IDL.Func([], [IDL.Vec(Setting)], ['query']),
@@ -326,6 +425,12 @@ export const idlFactory = ({ IDL }) => {
     'getBooks' : IDL.Func([], [IDL.Vec(Book)], ['query']),
     'getCoupon' : IDL.Func([IDL.Text], [IDL.Opt(Coupon)], ['query']),
     'getCoupons' : IDL.Func([], [IDL.Vec(Coupon)], ['query']),
+    'getCustomer' : IDL.Func([IDL.Text], [IDL.Opt(CustomerAccount)], ['query']),
+    'getCustomerAddresses' : IDL.Func(
+        [IDL.Text],
+        [IDL.Vec(CustomerAddress)],
+        ['query'],
+      ),
     'getMerchItem' : IDL.Func([IDL.Text], [IDL.Opt(MerchItem)], ['query']),
     'getMerchItems' : IDL.Func([], [IDL.Vec(MerchItem)], ['query']),
     'getOrder' : IDL.Func([IDL.Text], [IDL.Opt(Order)], ['query']),
@@ -334,11 +439,24 @@ export const idlFactory = ({ IDL }) => {
     'getSetting' : IDL.Func([IDL.Text], [IDL.Opt(Setting)], ['query']),
     'getSubscribers' : IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
     'incrementCouponUsage' : IDL.Func([IDL.Text], [], []),
+    'loginCustomer' : IDL.Func(
+        [IDL.Text, IDL.Text],
+        [IDL.Opt(CustomerAccount)],
+        [],
+      ),
+    'registerCustomer' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text],
+        [IDL.Opt(IDL.Text)],
+        [],
+      ),
     'removeSubscriber' : IDL.Func([IDL.Text], [], []),
+    'setDefaultAddress' : IDL.Func([IDL.Text, IDL.Text], [], []),
     'updateAudiobook' : IDL.Func([Audiobook], [], []),
     'updateAuthorBio' : IDL.Func([IDL.Text], [], []),
     'updateBlogPost' : IDL.Func([BlogPost], [], []),
     'updateBook' : IDL.Func([Book], [], []),
+    'updateCustomer' : IDL.Func([CustomerAccount], [], []),
+    'updateCustomerAddress' : IDL.Func([CustomerAddress], [], []),
     'updateMerchItem' : IDL.Func([MerchItem], [], []),
     'updateOrderStatus' : IDL.Func([IDL.Text, IDL.Text], [], []),
     'updateSetting' : IDL.Func([Setting], [], []),

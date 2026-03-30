@@ -51,6 +51,14 @@ const EMPTY_FORM: FormState = {
   audioFileUrl: "",
 };
 
+function icErrMsg(err: unknown): string {
+  if (err instanceof Error) {
+    const m = err.message.match(/with message:\s*'([^']+)'/s);
+    return m ? m[1].slice(0, 120) : err.message.slice(0, 120);
+  }
+  return String(err).slice(0, 120);
+}
+
 function formToAudiobook(f: FormState): Audiobook {
   return {
     id: f.id || `audio-${Date.now()}`,
@@ -137,9 +145,9 @@ export default function AdminStoreAudiobooks() {
   function handleAudioUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > 1 * 1024 * 1024) {
       toast.error(
-        "Audio file is too large (max 10MB). Please use a URL instead.",
+        "Audio file too large (max 1MB). Use an external URL instead for larger files.",
       );
       e.target.value = "";
       return;
@@ -175,8 +183,9 @@ export default function AdminStoreAudiobooks() {
         value: form.audioFileUrl,
       });
       setShowForm(false);
-    } catch {
-      toast.error("Save failed");
+    } catch (err) {
+      console.error("Admin save error:", err);
+      toast.error(`Save failed: ${icErrMsg(err)}`);
       setSaving(false);
       return;
     }
@@ -193,8 +202,9 @@ export default function AdminStoreAudiobooks() {
       await actor.updateSetting({ key: `audioFile_${idToDelete}`, value: "" });
       toast.success("Deleted");
       setDeleteId(null);
-    } catch {
-      toast.error("Delete failed");
+    } catch (err) {
+      console.error("Admin save error:", err);
+      toast.error(`Delete failed: ${icErrMsg(err)}`);
       return;
     }
     await load();
@@ -221,8 +231,9 @@ export default function AdminStoreAudiobooks() {
       }
       toast.success(`Seeded ${AUDIOBOOKS.length} audiobooks`);
       await load();
-    } catch {
-      toast.error("Seed failed");
+    } catch (err) {
+      console.error("Admin save error:", err);
+      toast.error(`Seed failed: ${icErrMsg(err)}`);
     }
     setSaving(false);
   }
@@ -636,7 +647,7 @@ export default function AdminStoreAudiobooks() {
                       <Music size={13} /> Upload Audio File
                     </button>
                     <span style={{ color: "#555", fontSize: "0.7rem" }}>
-                      Max 10MB · MP3, WAV, M4A
+                      Max 1MB · MP3, WAV, M4A
                     </span>
                   </div>
                   <Input

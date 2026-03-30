@@ -54,6 +54,27 @@ export interface Coupon {
   'maxUsages' : bigint,
   'currency' : string,
 }
+export interface CustomerAccount {
+  'id' : string,
+  'name' : string,
+  'createdAt' : bigint,
+  'email' : string,
+  'passwordHash' : string,
+}
+export interface CustomerAddress {
+  'id' : string,
+  'country' : string,
+  'city' : string,
+  'fullName' : string,
+  'line1' : string,
+  'line2' : string,
+  'state' : string,
+  'addressLabel' : string,
+  'isDefault' : boolean,
+  'customerId' : string,
+  'phone' : string,
+  'pincode' : string,
+}
 export interface MerchItem {
   'id' : string,
   'razorpayUrl' : string,
@@ -75,6 +96,8 @@ export interface Order {
   'totalAmount' : bigint,
   'currency' : string,
   'notes' : string,
+  'shippingAddress' : [] | [ShippingAddress],
+  'customerId' : [] | [string],
   'items' : Array<OrderItem>,
   'customerEmail' : string,
 }
@@ -93,6 +116,16 @@ export interface Review {
   'rating' : bigint,
 }
 export interface Setting { 'key' : string, 'value' : string }
+export interface ShippingAddress {
+  'country' : string,
+  'city' : string,
+  'fullName' : string,
+  'line1' : string,
+  'line2' : string,
+  'state' : string,
+  'phone' : string,
+  'pincode' : string,
+}
 export interface _CaffeineStorageCreateCertificateResult {
   'method' : string,
   'blob_hash' : string,
@@ -122,8 +155,10 @@ export interface _SERVICE {
   '_caffeineStorageUpdateGatewayPrincipals' : ActorMethod<[], undefined>,
   'addBlogPost' : ActorMethod<[BlogPost], undefined>,
   'addBook' : ActorMethod<[Book], undefined>,
+  'addCustomerAddress' : ActorMethod<[CustomerAddress], undefined>,
   'addReview' : ActorMethod<[Review], undefined>,
   'addSubscriber' : ActorMethod<[string], undefined>,
+  'changeCustomerPassword' : ActorMethod<[string, string, string], boolean>,
   'createAudiobook' : ActorMethod<[Audiobook], undefined>,
   'createCoupon' : ActorMethod<[Coupon], undefined>,
   'createMerchItem' : ActorMethod<[MerchItem], undefined>,
@@ -132,6 +167,7 @@ export interface _SERVICE {
   'deleteBlogPost' : ActorMethod<[string], undefined>,
   'deleteBook' : ActorMethod<[string], undefined>,
   'deleteCoupon' : ActorMethod<[string], undefined>,
+  'deleteCustomerAddress' : ActorMethod<[string], undefined>,
   'deleteMerchItem' : ActorMethod<[string], undefined>,
   'deleteOrder' : ActorMethod<[string], undefined>,
   'getAllSettings' : ActorMethod<[], Array<Setting>>,
@@ -144,6 +180,8 @@ export interface _SERVICE {
   'getBooks' : ActorMethod<[], Array<Book>>,
   'getCoupon' : ActorMethod<[string], [] | [Coupon]>,
   'getCoupons' : ActorMethod<[], Array<Coupon>>,
+  'getCustomer' : ActorMethod<[string], [] | [CustomerAccount]>,
+  'getCustomerAddresses' : ActorMethod<[string], Array<CustomerAddress>>,
   'getMerchItem' : ActorMethod<[string], [] | [MerchItem]>,
   'getMerchItems' : ActorMethod<[], Array<MerchItem>>,
   'getOrder' : ActorMethod<[string], [] | [Order]>,
@@ -152,11 +190,16 @@ export interface _SERVICE {
   'getSetting' : ActorMethod<[string], [] | [Setting]>,
   'getSubscribers' : ActorMethod<[], Array<string>>,
   'incrementCouponUsage' : ActorMethod<[string], undefined>,
+  'loginCustomer' : ActorMethod<[string, string], [] | [CustomerAccount]>,
+  'registerCustomer' : ActorMethod<[string, string, string], [] | [string]>,
   'removeSubscriber' : ActorMethod<[string], undefined>,
+  'setDefaultAddress' : ActorMethod<[string, string], undefined>,
   'updateAudiobook' : ActorMethod<[Audiobook], undefined>,
   'updateAuthorBio' : ActorMethod<[string], undefined>,
   'updateBlogPost' : ActorMethod<[BlogPost], undefined>,
   'updateBook' : ActorMethod<[Book], undefined>,
+  'updateCustomer' : ActorMethod<[CustomerAccount], undefined>,
+  'updateCustomerAddress' : ActorMethod<[CustomerAddress], undefined>,
   'updateMerchItem' : ActorMethod<[MerchItem], undefined>,
   'updateOrderStatus' : ActorMethod<[string, string], undefined>,
   'updateSetting' : ActorMethod<[Setting], undefined>,

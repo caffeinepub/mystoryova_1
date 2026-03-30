@@ -2,25 +2,50 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import type { Order, OrderItem } from "../backend.d";
+import type {
+  CustomerAddress,
+  Order,
+  OrderItem,
+  ShippingAddress,
+} from "../backend.d";
 import {
   MERCH_PAYMENT_LINKS,
   openRazorpayCheckout,
 } from "../config/razorpayLinks";
 import { useActor } from "../hooks/useActor";
+import { hashPassword, useCustomerAuth } from "../hooks/useCustomerAuth";
 import { useSEO } from "../hooks/useSEO";
-import { type CartItem, getCart } from "../utils/cart";
+import { type CartItem, clearCart, getCart } from "../utils/cart";
 
 type Currency = "INR" | "USD";
 
-interface CustomerInfo {
-  name: string;
+interface AddressFields {
+  fullName: string;
   email: string;
   phone: string;
+  line1: string;
+  line2: string;
+  city: string;
+  state: string;
+  pincode: string;
+  country: string;
 }
+
+const blankAddress = (): AddressFields => ({
+  fullName: "",
+  email: "",
+  phone: "",
+  line1: "",
+  line2: "",
+  city: "",
+  state: "",
+  pincode: "",
+  country: "India",
+});
 
 interface Props {
   isDark: boolean;
@@ -28,18 +53,16 @@ interface Props {
 
 export default function Checkout({ isDark }: Props) {
   const { actor } = useActor();
+  const { customer, isLoggedIn, login } = useCustomerAuth();
   useSEO({
     title: "Checkout — Mystoryova",
     description: "Complete your order at Mystoryova.",
   });
+
   const [allItems, setAllItems] = useState<CartItem[]>([]);
-  const [paidIds, setPaidIds] = useState<Set<string>>(new Set());
+  const [orderComplete, setOrderComplete] = useState(false);
   const [currency, setCurrency] = useState<Currency>("INR");
-  const [customer, setCustomer] = useState<CustomerInfo>({
-    name: "",
-    email: "",
-    phone: "",
-  });
+  const [address, setAddress] = useState<AddressFields>(blankAddress);
   const [couponCode, setCouponCode] = useState("");
   const [discount, setDiscount] = useState(0);
   const [couponMsg, setCouponMsg] = useState("");
@@ -48,10 +71,22 @@ export default function Checkout({ isDark }: Props) {
   const [region, setRegion] = useState<"india" | "international">("india");
   const [shippingINR, setShippingINR] = useState(0);
   const [shippingIntl, setShippingIntl] = useState(0);
-  // Map of itemId -> true if free shipping
   const [freeShippingMap, setFreeShippingMap] = useState<
     Record<string, boolean>
   >({});
+
+  // Auth section state
+  const [authSection, setAuthSection] = useState<"none" | "login" | "guest">(
+    "none",
+  );
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState("");
+
+  // Saved addresses
+  const [savedAddresses, setSavedAddresses] = useState<CustomerAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>("new");
 
   useEffect(() => {
     const cart = getCart();
@@ -80,6 +115,31 @@ export default function Checkout({ isDark }: Props) {
       setFreeShippingMap(freeMap);
     });
   }, [actor]);
+
+  useEffect(() => {
+    if (!actor || !customer) return;
+    actor
+      .getCustomerAddresses(customer.id)
+      .then((addrs) => {
+        setSavedAddresses(addrs);
+        const def = addrs.find((a) => a.isDefault);
+        if (def) {
+          setSelectedAddressId(def.id);
+          setAddress({
+            fullName: def.fullName,
+            email: customer.email,
+            phone: def.phone,
+            line1: def.line1,
+            line2: def.line2,
+            city: def.city,
+            state: def.state,
+            pincode: def.pincode,
+            country: def.country,
+          });
+        }
+      })
+      .catch(() => {});
+  }, [actor, customer]);
 
   const fg = isDark ? "#f0ead6" : "#1a1a1a";
   const cardBg = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)";
@@ -110,12 +170,31 @@ export default function Checkout({ isDark }: Props) {
       : `$${(item.price * item.quantity).toFixed(2)}`;
   }
 
-  // Total shipping across all items
   const totalShipping = items.reduce(
     (sum, item) => sum + getItemShipping(item),
     0,
   );
   const totalWithShipping = Math.max(0, discountedTotal + totalShipping);
+  const subtotalDisplay =
+    currency === "INR" ? `₹${subtotal}` : `$${subtotal.toFixed(2)}`;
+  const totalDisplay =
+    currency === "INR"
+      ? `₹${totalWithShipping.toFixed(0)}`
+      : `$${totalWithShipping.toFixed(2)}`;
+
+  function applyAddressFromSaved(addr: CustomerAddress) {
+    setAddress({
+      fullName: addr.fullName,
+      email: customer?.email ?? "",
+      phone: addr.phone,
+      line1: addr.line1,
+      line2: addr.line2,
+      city: addr.city,
+      state: addr.state,
+      pincode: addr.pincode,
+      country: addr.country,
+    });
+  }
 
   async function applyCoupon() {
     if (!actor || !couponCode.trim()) return;
@@ -148,64 +227,106 @@ export default function Checkout({ isDark }: Props) {
     setApplyingCoupon(false);
   }
 
-  async function handlePay(item: CartItem) {
-    if (!customer.name.trim()) {
-      toast.error("Please enter your name");
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!actor) return;
+    setLoginError("");
+    setLoginLoading(true);
+    const result = await login(actor, loginEmail, loginPassword);
+    if (!result.success) setLoginError(result.error ?? "Login failed.");
+    setLoginLoading(false);
+  }
+
+  async function handlePayAll() {
+    if (!address.fullName.trim()) {
+      toast.error("Please enter your full name");
       return;
     }
-    if (!customer.email.trim()) {
+    if (!address.email.trim()) {
       toast.error("Please enter your email");
       return;
     }
+    if (!address.line1.trim()) {
+      toast.error("Please enter address line 1");
+      return;
+    }
+    if (!address.city.trim()) {
+      toast.error("Please enter city");
+      return;
+    }
+    if (!address.pincode.trim()) {
+      toast.error("Please enter PIN code");
+      return;
+    }
+    if (items.length === 0) return;
 
-    const link = MERCH_PAYMENT_LINKS.find((p) => p.productId === item.id);
-    if (!link) return;
-    const itemAmt =
-      currency === "INR"
-        ? link.price * item.quantity
-        : link.priceUSD * item.quantity;
-    const itemShipping = getItemShipping(item);
-    const shippingAmt =
-      region === "india" ? itemShipping * 100 : Math.round(itemShipping * 100);
-    const amount = itemAmt + shippingAmt;
+    const razorpayAmount = Math.round(totalWithShipping * 100);
+    const description = items.map((i) => `${i.name} ×${i.quantity}`).join(", ");
+
+    const shippingAddress: ShippingAddress = {
+      fullName: address.fullName,
+      phone: address.phone,
+      line1: address.line1,
+      line2: address.line2,
+      city: address.city,
+      state: address.state,
+      pincode: address.pincode,
+      country: address.country,
+    };
 
     openRazorpayCheckout({
-      name: link.name,
-      description: `${item.name} × ${item.quantity}`,
-      amount,
+      name: "Mystoryova",
+      description,
+      amount: razorpayAmount,
       currency,
-      email: customer.email,
-      contact: customer.phone,
+      email: address.email,
+      contact: address.phone,
       onSuccess: async (response) => {
-        setPaidIds((prev) => new Set(prev).add(item.id));
+        setOrderComplete(true);
         if (actor) {
           try {
-            const orderItem: OrderItem = {
-              productId: item.id,
-              name: item.name,
-              quantity: BigInt(item.quantity),
-              price: BigInt(link.price),
-              currency,
-            };
+            const orderItems: OrderItem[] = items.map((item) => {
+              const link = MERCH_PAYMENT_LINKS.find(
+                (p) => p.productId === item.id,
+              );
+              return {
+                productId: item.id,
+                name: item.name,
+                quantity: BigInt(item.quantity),
+                price: BigInt(
+                  currency === "INR"
+                    ? link
+                      ? link.price
+                      : Math.round(item.price * 100)
+                    : link
+                      ? link.priceUSD
+                      : Math.round(item.price * 100),
+                ),
+                currency,
+              };
+            });
             const order: Order = {
               id: `order_${Date.now()}`,
               razorpayPaymentId: response.razorpay_payment_id ?? "",
-              customerName: customer.name,
-              customerEmail: customer.email,
-              customerPhone: customer.phone,
+              customerName: address.fullName,
+              customerEmail: address.email,
+              customerPhone: address.phone,
               status: "Pending",
               currency,
-              totalAmount: BigInt(amount),
+              totalAmount: BigInt(razorpayAmount),
               createdAt: BigInt(Date.now() * 1_000_000),
               notes: couponApplied ? `Coupon: ${couponApplied}` : "",
-              items: [orderItem],
+              items: orderItems,
+              shippingAddress,
+              customerId: customer?.id,
             };
             await actor.createOrder(order);
             if (couponApplied) await actor.incrementCouponUsage(couponApplied);
-            toast.success("Order saved! Check your email for confirmation.");
+            clearCart();
+            toast.success("Order saved! You'll receive a confirmation email.");
           } catch {
             toast.error(
-              "Payment successful but order record failed to save. Contact support.",
+              "Payment successful but order record failed. Contact support.",
             );
           }
         }
@@ -213,12 +334,7 @@ export default function Checkout({ isDark }: Props) {
     });
   }
 
-  const subtotalDisplay =
-    currency === "INR" ? `₹${subtotal}` : `$${subtotal.toFixed(2)}`;
-  const totalDisplay =
-    currency === "INR"
-      ? `₹${totalWithShipping.toFixed(0)}`
-      : `$${totalWithShipping.toFixed(2)}`;
+  const GOLD_GRAD = "linear-gradient(135deg, #D4AF37, #F0D060)";
 
   return (
     <div
@@ -259,10 +375,7 @@ export default function Checkout({ isDark }: Props) {
                 data-ocid="checkout.currency.toggle"
                 className="px-4 py-2 text-sm font-semibold tracking-wide transition-all duration-200"
                 style={{
-                  background:
-                    currency === "INR"
-                      ? "linear-gradient(135deg, #D4AF37, #F0D060)"
-                      : "transparent",
+                  background: currency === "INR" ? GOLD_GRAD : "transparent",
                   color: currency === "INR" ? "#0a0a0a" : mutedColor,
                 }}
                 onClick={() => {
@@ -277,10 +390,7 @@ export default function Checkout({ isDark }: Props) {
                 data-ocid="checkout.currency.toggle"
                 className="px-4 py-2 text-sm font-semibold tracking-wide transition-all duration-200"
                 style={{
-                  background:
-                    currency === "USD"
-                      ? "linear-gradient(135deg, #D4AF37, #F0D060)"
-                      : "transparent",
+                  background: currency === "USD" ? GOLD_GRAD : "transparent",
                   color: currency === "USD" ? "#0a0a0a" : mutedColor,
                   borderLeft: `1px solid ${cardBorder}`,
                 }}
@@ -324,7 +434,7 @@ export default function Checkout({ isDark }: Props) {
             <Button
               asChild
               style={{
-                background: "linear-gradient(135deg, #D4AF37, #F0D060)",
+                background: GOLD_GRAD,
                 color: "#0a0a0a",
                 fontWeight: 700,
               }}
@@ -334,7 +444,164 @@ export default function Checkout({ isDark }: Props) {
           </div>
         ) : (
           <>
-            {/* Customer Info */}
+            {/* ── LOGIN / GUEST SECTION ── */}
+            <div
+              className="rounded-2xl p-5 mb-6"
+              style={{
+                background: cardBg,
+                border: `1px solid ${cardBorder}`,
+                backdropFilter: "blur(12px)",
+              }}
+            >
+              {isLoggedIn && customer ? (
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
+                    style={{ background: GOLD_GRAD, color: "#0a0a0a" }}
+                  >
+                    {customer.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: fg }}>
+                      Welcome back, {customer.name}!
+                    </p>
+                    <p className="text-xs" style={{ color: mutedColor }}>
+                      Signed in as {customer.email}
+                    </p>
+                  </div>
+                  <Link
+                    to="/account"
+                    className="ml-auto text-xs"
+                    style={{ color: "#D4AF37" }}
+                  >
+                    My Account
+                  </Link>
+                </div>
+              ) : (
+                <>
+                  <h2
+                    className="text-sm font-bold mb-3"
+                    style={{ color: "#D4AF37" }}
+                  >
+                    How would you like to checkout?
+                  </h2>
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      data-ocid="checkout.toggle"
+                      className="px-4 py-2 rounded-xl text-sm font-semibold transition-all"
+                      style={{
+                        background:
+                          authSection === "login" ? GOLD_GRAD : "transparent",
+                        color: authSection === "login" ? "#0a0a0a" : mutedColor,
+                        border: `1px solid ${cardBorder}`,
+                      }}
+                      onClick={() =>
+                        setAuthSection(
+                          authSection === "login" ? "none" : "login",
+                        )
+                      }
+                    >
+                      🔑 Login to my account
+                    </button>
+                    <button
+                      type="button"
+                      data-ocid="checkout.toggle"
+                      className="px-4 py-2 rounded-xl text-sm font-semibold transition-all"
+                      style={{
+                        background:
+                          authSection === "guest" ? GOLD_GRAD : "transparent",
+                        color: authSection === "guest" ? "#0a0a0a" : mutedColor,
+                        border: `1px solid ${cardBorder}`,
+                      }}
+                      onClick={() =>
+                        setAuthSection(
+                          authSection === "guest" ? "none" : "guest",
+                        )
+                      }
+                    >
+                      👤 Continue as Guest
+                    </button>
+                  </div>
+
+                  <AnimatePresence>
+                    {authSection === "login" && (
+                      <motion.form
+                        key="login-form"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        onSubmit={handleLogin}
+                        data-ocid="checkout.modal"
+                        className="mt-4 flex flex-col gap-3"
+                      >
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="flex flex-col gap-1">
+                            <Label
+                              style={{ color: mutedColor, fontSize: "0.75rem" }}
+                            >
+                              Email
+                            </Label>
+                            <Input
+                              data-ocid="checkout.input"
+                              type="email"
+                              value={loginEmail}
+                              onChange={(e) => setLoginEmail(e.target.value)}
+                              placeholder="you@email.com"
+                              style={inputStyle}
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <Label
+                              style={{ color: mutedColor, fontSize: "0.75rem" }}
+                            >
+                              Password
+                            </Label>
+                            <Input
+                              data-ocid="checkout.input"
+                              type="password"
+                              value={loginPassword}
+                              onChange={(e) => setLoginPassword(e.target.value)}
+                              placeholder="••••••••"
+                              style={inputStyle}
+                            />
+                          </div>
+                        </div>
+                        {loginError && (
+                          <p
+                            data-ocid="checkout.error_state"
+                            className="text-xs"
+                            style={{ color: "#EF4444" }}
+                          >
+                            {loginError}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-3">
+                          <Button
+                            data-ocid="checkout.submit_button"
+                            type="submit"
+                            size="sm"
+                            disabled={loginLoading}
+                            style={{ background: GOLD_GRAD, color: "#0a0a0a" }}
+                          >
+                            {loginLoading ? "Signing in..." : "Sign In"}
+                          </Button>
+                          <Link
+                            to="/account"
+                            className="text-xs"
+                            style={{ color: "#D4AF37" }}
+                          >
+                            Create account
+                          </Link>
+                        </div>
+                      </motion.form>
+                    )}
+                  </AnimatePresence>
+                </>
+              )}
+            </div>
+
+            {/* ── SHIPPING ADDRESS ── */}
             <div
               className="rounded-2xl p-6 mb-6"
               style={{
@@ -350,8 +617,9 @@ export default function Checkout({ isDark }: Props) {
                   color: "#D4AF37",
                 }}
               >
-                Your Details
+                Shipping Address
               </h2>
+
               {/* Region selector */}
               <div className="flex flex-col gap-2 mb-4">
                 <Label style={{ color: mutedColor, fontSize: "0.75rem" }}>
@@ -367,9 +635,7 @@ export default function Checkout({ isDark }: Props) {
                     className="px-4 py-2 text-sm font-semibold tracking-wide transition-all duration-200"
                     style={{
                       background:
-                        region === "india"
-                          ? "linear-gradient(135deg, #D4AF37, #F0D060)"
-                          : "transparent",
+                        region === "india" ? GOLD_GRAD : "transparent",
                       color: region === "india" ? "#0a0a0a" : mutedColor,
                     }}
                     onClick={() => setRegion("india")}
@@ -382,9 +648,7 @@ export default function Checkout({ isDark }: Props) {
                     className="px-4 py-2 text-sm font-semibold tracking-wide transition-all duration-200"
                     style={{
                       background:
-                        region === "international"
-                          ? "linear-gradient(135deg, #D4AF37, #F0D060)"
-                          : "transparent",
+                        region === "international" ? GOLD_GRAD : "transparent",
                       color:
                         region === "international" ? "#0a0a0a" : mutedColor,
                       borderLeft: `1px solid ${cardBorder}`,
@@ -396,51 +660,229 @@ export default function Checkout({ isDark }: Props) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="flex flex-col gap-1">
-                  <Label style={{ color: mutedColor, fontSize: "0.75rem" }}>
-                    Full Name *
-                  </Label>
-                  <Input
-                    data-ocid="checkout.input"
-                    value={customer.name}
-                    onChange={(e) =>
-                      setCustomer((p) => ({ ...p, name: e.target.value }))
-                    }
-                    placeholder="Your name"
-                    style={inputStyle}
-                  />
+              {/* Saved addresses for logged-in users */}
+              {isLoggedIn && savedAddresses.length > 0 && (
+                <div className="mb-4">
+                  <p
+                    className="text-xs font-semibold mb-2"
+                    style={{ color: mutedColor }}
+                  >
+                    Select a saved address:
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {savedAddresses.map((addr) => (
+                      <label
+                        key={addr.id}
+                        data-ocid="checkout.radio"
+                        className="flex items-start gap-3 rounded-xl px-4 py-3 cursor-pointer transition-all"
+                        style={{
+                          border: `1px solid ${selectedAddressId === addr.id ? "rgba(212,175,55,0.5)" : cardBorder}`,
+                          background:
+                            selectedAddressId === addr.id
+                              ? "rgba(212,175,55,0.06)"
+                              : "transparent",
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="savedAddress"
+                          value={addr.id}
+                          checked={selectedAddressId === addr.id}
+                          onChange={() => {
+                            setSelectedAddressId(addr.id);
+                            applyAddressFromSaved(addr);
+                          }}
+                          className="mt-1 accent-amber-500"
+                        />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="text-sm font-semibold"
+                              style={{ color: fg }}
+                            >
+                              {addr.addressLabel || "Address"}
+                            </span>
+                            {addr.isDefault && (
+                              <span
+                                className="text-xs px-2 py-0.5 rounded-full"
+                                style={{
+                                  background: "rgba(212,175,55,0.15)",
+                                  color: "#D4AF37",
+                                }}
+                              >
+                                Default
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs" style={{ color: mutedColor }}>
+                            {addr.fullName} · {addr.line1}, {addr.city},{" "}
+                            {addr.state} {addr.pincode}
+                          </p>
+                        </div>
+                      </label>
+                    ))}
+                    <label
+                      data-ocid="checkout.radio"
+                      className="flex items-center gap-3 rounded-xl px-4 py-3 cursor-pointer transition-all"
+                      style={{
+                        border: `1px solid ${selectedAddressId === "new" ? "rgba(212,175,55,0.5)" : cardBorder}`,
+                        background:
+                          selectedAddressId === "new"
+                            ? "rgba(212,175,55,0.06)"
+                            : "transparent",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="savedAddress"
+                        value="new"
+                        checked={selectedAddressId === "new"}
+                        onChange={() => {
+                          setSelectedAddressId("new");
+                          setAddress(blankAddress());
+                        }}
+                        className="accent-amber-500"
+                      />
+                      <span className="text-sm" style={{ color: mutedColor }}>
+                        + Use a new address
+                      </span>
+                    </label>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <Label style={{ color: mutedColor, fontSize: "0.75rem" }}>
-                    Email *
-                  </Label>
-                  <Input
-                    data-ocid="checkout.input"
-                    type="email"
-                    value={customer.email}
-                    onChange={(e) =>
-                      setCustomer((p) => ({ ...p, email: e.target.value }))
-                    }
-                    placeholder="you@email.com"
-                    style={inputStyle}
-                  />
+              )}
+
+              {/* Address form — show for guest OR when "new" selected */}
+              {(!isLoggedIn || selectedAddressId === "new") && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1 sm:col-span-2">
+                    <Label style={{ color: mutedColor, fontSize: "0.75rem" }}>
+                      Full Name *
+                    </Label>
+                    <Input
+                      data-ocid="checkout.input"
+                      value={address.fullName}
+                      onChange={(e) =>
+                        setAddress((p) => ({ ...p, fullName: e.target.value }))
+                      }
+                      placeholder="Full name"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label style={{ color: mutedColor, fontSize: "0.75rem" }}>
+                      Email *
+                    </Label>
+                    <Input
+                      data-ocid="checkout.input"
+                      type="email"
+                      value={address.email}
+                      onChange={(e) =>
+                        setAddress((p) => ({ ...p, email: e.target.value }))
+                      }
+                      placeholder="you@email.com"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label style={{ color: mutedColor, fontSize: "0.75rem" }}>
+                      Phone
+                    </Label>
+                    <Input
+                      data-ocid="checkout.input"
+                      value={address.phone}
+                      onChange={(e) =>
+                        setAddress((p) => ({ ...p, phone: e.target.value }))
+                      }
+                      placeholder="+91 ..."
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1 sm:col-span-2">
+                    <Label style={{ color: mutedColor, fontSize: "0.75rem" }}>
+                      Address Line 1 *
+                    </Label>
+                    <Input
+                      data-ocid="checkout.input"
+                      value={address.line1}
+                      onChange={(e) =>
+                        setAddress((p) => ({ ...p, line1: e.target.value }))
+                      }
+                      placeholder="Street, apartment, building"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1 sm:col-span-2">
+                    <Label style={{ color: mutedColor, fontSize: "0.75rem" }}>
+                      Address Line 2
+                    </Label>
+                    <Input
+                      data-ocid="checkout.input"
+                      value={address.line2}
+                      onChange={(e) =>
+                        setAddress((p) => ({ ...p, line2: e.target.value }))
+                      }
+                      placeholder="Area, landmark (optional)"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label style={{ color: mutedColor, fontSize: "0.75rem" }}>
+                      City *
+                    </Label>
+                    <Input
+                      data-ocid="checkout.input"
+                      value={address.city}
+                      onChange={(e) =>
+                        setAddress((p) => ({ ...p, city: e.target.value }))
+                      }
+                      placeholder="City"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label style={{ color: mutedColor, fontSize: "0.75rem" }}>
+                      State
+                    </Label>
+                    <Input
+                      data-ocid="checkout.input"
+                      value={address.state}
+                      onChange={(e) =>
+                        setAddress((p) => ({ ...p, state: e.target.value }))
+                      }
+                      placeholder="State"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label style={{ color: mutedColor, fontSize: "0.75rem" }}>
+                      PIN Code *
+                    </Label>
+                    <Input
+                      data-ocid="checkout.input"
+                      value={address.pincode}
+                      onChange={(e) =>
+                        setAddress((p) => ({ ...p, pincode: e.target.value }))
+                      }
+                      placeholder="PIN / ZIP"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label style={{ color: mutedColor, fontSize: "0.75rem" }}>
+                      Country
+                    </Label>
+                    <Input
+                      data-ocid="checkout.input"
+                      value={address.country}
+                      onChange={(e) =>
+                        setAddress((p) => ({ ...p, country: e.target.value }))
+                      }
+                      placeholder="Country"
+                      style={inputStyle}
+                    />
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <Label style={{ color: mutedColor, fontSize: "0.75rem" }}>
-                    Phone
-                  </Label>
-                  <Input
-                    data-ocid="checkout.input"
-                    value={customer.phone}
-                    onChange={(e) =>
-                      setCustomer((p) => ({ ...p, phone: e.target.value }))
-                    }
-                    placeholder="+91 ..."
-                    style={inputStyle}
-                  />
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Coupon code */}
@@ -493,7 +935,7 @@ export default function Checkout({ isDark }: Props) {
 
             {/* Order summary */}
             <div
-              className="rounded-2xl p-6 mb-8"
+              className="rounded-2xl p-6 mb-6"
               style={{
                 background: cardBg,
                 border: `1px solid ${cardBorder}`,
@@ -512,7 +954,6 @@ export default function Checkout({ isDark }: Props) {
               </h2>
               <div className="flex flex-col gap-4">
                 {items.map((item, i) => {
-                  const paid = paidIds.has(item.id);
                   const itemShipping = getItemShipping(item);
                   const isFreeShipping = freeShippingMap[item.id] === true;
                   return (
@@ -570,31 +1011,7 @@ export default function Checkout({ isDark }: Props) {
                             Qty: {item.quantity} · {getDisplayPrice(item)}
                           </p>
                         </div>
-                        {paid ? (
-                          <div
-                            data-ocid={`checkout.success_state.${i + 1}`}
-                            className="flex items-center gap-2 text-sm font-semibold"
-                            style={{ color: "#22c55e" }}
-                          >
-                            ✅ Payment Initiated
-                          </div>
-                        ) : (
-                          <Button
-                            data-ocid={`checkout.primary_button.${i + 1}`}
-                            size="sm"
-                            style={{
-                              background:
-                                "linear-gradient(135deg, #D4AF37, #F0D060)",
-                              color: "#0a0a0a",
-                              fontWeight: 700,
-                            }}
-                            onClick={() => handlePay(item)}
-                          >
-                            Pay {getDisplayPrice(item)} via Razorpay
-                          </Button>
-                        )}
                       </div>
-                      {/* Per-item shipping line */}
                       <div
                         className="flex justify-between text-xs rounded-lg px-3 py-2"
                         style={{
@@ -629,7 +1046,6 @@ export default function Checkout({ isDark }: Props) {
                 })}
               </div>
 
-              {/* Totals */}
               <div className="mt-4 flex flex-col gap-1">
                 <div className="flex justify-between text-sm">
                   <span style={{ color: mutedColor }}>Subtotal</span>
@@ -673,6 +1089,56 @@ export default function Checkout({ isDark }: Props) {
                   <span style={{ color: "#D4AF37" }}>{totalDisplay}</span>
                 </div>
               </div>
+            </div>
+
+            {/* Pay button */}
+            <div className="mb-6">
+              {!orderComplete ? (
+                <Button
+                  data-ocid="checkout.primary_button"
+                  onClick={handlePayAll}
+                  className="w-full py-4 text-lg font-bold tracking-wide"
+                  style={{ background: GOLD_GRAD, color: "#0a0a0a" }}
+                >
+                  Pay {totalDisplay} via Razorpay
+                </Button>
+              ) : (
+                <div
+                  data-ocid="checkout.success_state"
+                  className="rounded-2xl p-8 text-center"
+                  style={{
+                    background: "rgba(34,197,94,0.08)",
+                    border: "1px solid rgba(34,197,94,0.3)",
+                  }}
+                >
+                  <div className="text-4xl mb-3">✅</div>
+                  <h3
+                    className="text-xl font-bold mb-1"
+                    style={{ color: "#22C55E" }}
+                  >
+                    Payment Successful!
+                  </h3>
+                  <p className="text-sm" style={{ color: "#888" }}>
+                    Your order has been placed. Check your email for
+                    confirmation.
+                  </p>
+                  {isLoggedIn && (
+                    <Link to="/account">
+                      <Button
+                        size="sm"
+                        className="mt-4"
+                        style={{
+                          background:
+                            "linear-gradient(135deg, #D4AF37, #F0D060)",
+                          color: "#0a0a0a",
+                        }}
+                      >
+                        View My Orders
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+              )}
             </div>
 
             <div

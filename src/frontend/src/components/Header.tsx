@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useCustomerAuth } from "../hooks/useCustomerAuth";
 import { getCartCount } from "../utils/cart";
 import { getWishlist } from "../utils/wishlist";
 
@@ -14,6 +15,7 @@ export default function Header({ isDark, toggleTheme }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const navigate = useNavigate();
+  const { customer, isLoggedIn } = useCustomerAuth();
 
   useEffect(() => {
     const updateWishlist = () => setWishlistCount(getWishlist().length);
@@ -181,6 +183,43 @@ export default function Header({ isDark, toggleTheme }: Props) {
               )}
             </Link>
 
+            {/* Account */}
+            <Link
+              to="/account"
+              className="relative p-2"
+              aria-label="My Account"
+              data-ocid="header.account.link"
+            >
+              {isLoggedIn && customer ? (
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                  style={{
+                    background: "linear-gradient(135deg, #D4AF37, #F0D060)",
+                    color: "#0a0a0a",
+                  }}
+                >
+                  {customer.name.charAt(0).toUpperCase()}
+                </div>
+              ) : (
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="#D4AF37"
+                  strokeWidth="2"
+                  viewBox="0 0 24 24"
+                  role="img"
+                  aria-label="Account"
+                >
+                  <title>Account</title>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                  />
+                </svg>
+              )}
+            </Link>
+
             {/* Theme toggle */}
             <button
               type="button"
@@ -274,6 +313,17 @@ export default function Header({ isDark, toggleTheme }: Props) {
               onClick={() => setMenuOpen(false)}
             >
               Library
+            </Link>
+            <Link
+              to="/account"
+              data-ocid="header.account.link"
+              className="text-sm font-medium py-1"
+              style={{ color: "#D4AF37" }}
+              onClick={() => setMenuOpen(false)}
+            >
+              {isLoggedIn && customer
+                ? `My Account (${customer.name})`
+                : "My Account"}
             </Link>
             <form onSubmit={handleSearch} className="flex mt-2">
               <input

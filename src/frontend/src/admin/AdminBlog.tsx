@@ -35,6 +35,14 @@ const CATEGORIES = [
   "Other",
 ];
 
+function icErrMsg(err: unknown): string {
+  if (err instanceof Error) {
+    const m = err.message.match(/with message:\s*'([^']+)'/s);
+    return m ? m[1].slice(0, 120) : err.message.slice(0, 120);
+  }
+  return String(err).slice(0, 120);
+}
+
 function slugify(title: string) {
   return `post-${title
     .toLowerCase()
@@ -143,8 +151,9 @@ export default function AdminBlog() {
         toast.success("Post created");
       }
       setShowForm(false);
-    } catch {
-      toast.error("Save failed");
+    } catch (err) {
+      console.error("Admin save error:", err);
+      toast.error(`Save failed: ${icErrMsg(err)}`);
       setSaving(false);
       return;
     }
@@ -159,8 +168,9 @@ export default function AdminBlog() {
       toast.success("Post deleted");
       setDeleteId(null);
       await load();
-    } catch {
-      toast.error("Delete failed");
+    } catch (err) {
+      console.error("Admin save error:", err);
+      toast.error(`Delete failed: ${icErrMsg(err)}`);
     }
   }
 

@@ -8,8 +8,35 @@ import Order "mo:core/Order";
 
 import MixinStorage "blob-storage/Mixin";
 
+
+
 actor {
   include MixinStorage();
+
+  // Helper Functions
+  func naturalOrderCompare(a : Text, b : Text) : Order.Order {
+    if (a == b) { return #equal };
+    let aIter = a.chars();
+    let bIter = b.chars();
+
+    loop {
+      switch (aIter.next(), bIter.next()) {
+        case (null, null) { return #equal };
+        case (null, ?_) { return #less };
+        case (?_, null) { return #greater };
+        case (?aChar, ?bChar) {
+          if (aChar != bChar) { return Char.compare(aChar, bChar) };
+        };
+      };
+    };
+  };
+
+  func getCustomerAddressFromMap(id : Text) : CustomerAddress {
+    switch (customerAddresses.get(id)) {
+      case (null) { Runtime.trap("Customer address with id " # id # " not found") };
+      case (?address) { address };
+    }
+  };
 
   // Data Types
   type BookFormat = { #kindle : Text; #paperback : Text };
@@ -48,20 +75,6 @@ actor {
     quantity : Nat;
     price : Nat;
     currency : Text;
-  };
-
-  type Order = {
-    id : Text;
-    customerName : Text;
-    customerEmail : Text;
-    customerPhone : Text;
-    items : [OrderItem];
-    totalAmount : Nat;
-    currency : Text;
-    status : Text;
-    createdAt : Int;
-    razorpayPaymentId : Text;
-    notes : Text;
   };
 
   type Coupon = {
@@ -106,6 +119,71 @@ actor {
     value : Text;
   };
 
+  type CustomerAccount = {
+    id : Text;
+    name : Text;
+    email : Text;
+    passwordHash : Text;
+    createdAt : Int;
+  };
+
+  type CustomerAddress = {
+    id : Text;
+    customerId : Text;
+    addressLabel : Text;
+    fullName : Text;
+    phone : Text;
+    line1 : Text;
+    line2 : Text;
+    city : Text;
+    state : Text;
+    pincode : Text;
+    country : Text;
+    isDefault : Bool;
+  };
+
+  type ShippingAddress = {
+    fullName : Text;
+    phone : Text;
+    line1 : Text;
+    line2 : Text;
+    city : Text;
+    state : Text;
+    pincode : Text;
+    country : Text;
+  };
+
+  type Order = {
+    id : Text;
+    customerId : ?Text;
+    customerName : Text;
+    customerEmail : Text;
+    customerPhone : Text;
+    shippingAddress : ?ShippingAddress;
+    items : [OrderItem];
+    totalAmount : Nat;
+    currency : Text;
+    status : Text;
+    createdAt : Int;
+    razorpayPaymentId : Text;
+    notes : Text;
+  };
+
+  // Persistent Data Structures
+  let books = Map.empty<Text, Book>();
+  let blogPosts = Map.empty<Text, BlogPost>();
+  let reviews = Map.empty<Text, List.List<Review>>();
+  var subscribers = List.empty<Text>();
+  var authorBio = "O. Chiddarwar is a passionate author...";
+
+  let orders = Map.empty<Text, Order>();
+  let coupons = Map.empty<Text, Coupon>();
+  let audiobooks = Map.empty<Text, Audiobook>();
+  let merchItems = Map.empty<Text, MerchItem>();
+  let settings = Map.empty<Text, Setting>();
+  let customerAccounts = Map.empty<Text, CustomerAccount>();
+  let customerAddresses = Map.empty<Text, CustomerAddress>();
+
   // Safe upsert helpers: remove existing key first so add() never traps
   func upsertBook(key : Text, value : Book) {
     books.remove(key);
@@ -147,18 +225,15 @@ actor {
     settings.add(key, value);
   };
 
-  // Persistent Data Structures
-  let books = Map.empty<Text, Book>();
-  let blogPosts = Map.empty<Text, BlogPost>();
-  let reviews = Map.empty<Text, List.List<Review>>();
-  var subscribers = List.empty<Text>();
-  var authorBio = "O. Chiddarwar is a passionate author...";
+  func upsertCustomerAccount(key : Text, value : CustomerAccount) {
+    customerAccounts.remove(key);
+    customerAccounts.add(key, value);
+  };
 
-  let orders = Map.empty<Text, Order>();
-  let coupons = Map.empty<Text, Coupon>();
-  let audiobooks = Map.empty<Text, Audiobook>();
-  let merchItems = Map.empty<Text, MerchItem>();
-  let settings = Map.empty<Text, Setting>();
+  func upsertCustomerAddress(key : Text, value : CustomerAddress) {
+    customerAddresses.remove(key);
+    customerAddresses.add(key, value);
+  };
 
   // Book Management
   public query func getBooks() : async [Book] {
@@ -370,5 +445,102 @@ actor {
 
   public query func getAllSettings() : async [Setting] {
     settings.values().toArray();
+  };
+
+  // Customer Account Management
+  public shared ({ caller }) func registerCustomer(name : Text, email : Text, passwordHash : Text) : async ?Text {
+    let lowerEmail = email.toLower();
+    switch (customerAccounts.values().find(func(a) { a.email.toLower() == lowerEmail })) {
+      case (?_) { null };
+      case (null) {
+        let id = email.concat(name);
+        let account : CustomerAccount = {
+          id;
+          name;
+          email;
+          passwordHash;
+          createdAt = Time.now();
+        };
+        upsertCustomerAccount(id, account);
+        ?id;
+      };
+    };
+  };
+
+  public shared ({ caller }) func loginCustomer(email : Text, passwordHash : Text) : async ?CustomerAccount {
+    let lowerEmail = email.toLower();
+    customerAccounts.values().find(
+      func(a) { a.email.toLower() == lowerEmail and a.passwordHash == passwordHash }
+    );
+  };
+
+  public query func getCustomer(id : Text) : async ?CustomerAccount {
+    customerAccounts.get(id);
+  };
+
+  public shared ({ caller }) func updateCustomer(account : CustomerAccount) : async () {
+    let existingAccount = switch (customerAccounts.get(account.id)) {
+      case (null) { Runtime.trap("Customer not found") };
+      case (?acc) { acc };
+    };
+    let updatedAccount = {
+      existingAccount with name = account.name;
+    };
+    upsertCustomerAccount(account.id, updatedAccount);
+  };
+
+  public shared ({ caller }) func changeCustomerPassword(id : Text, oldHash : Text, newHash : Text) : async Bool {
+    let existingAccount = switch (customerAccounts.get(id)) {
+      case (null) { return false };
+      case (?acc) { acc };
+    };
+    if (existingAccount.passwordHash != oldHash) { return false };
+    let updatedAccount = {
+      existingAccount with passwordHash = newHash;
+    };
+    upsertCustomerAccount(id, updatedAccount);
+    true;
+  };
+
+  // Customer Address Management
+  public shared ({ caller }) func addCustomerAddress(address : CustomerAddress) : async () {
+    upsertCustomerAddress(address.id, address);
+  };
+
+  public query func getCustomerAddresses(customerId : Text) : async [CustomerAddress] {
+    let allAddresses = customerAddresses.values().toArray();
+    let filteredAddresses = allAddresses.filter(
+      func(addr) {
+        addr.customerId == customerId;
+      }
+    );
+    filteredAddresses.sort(
+      func(a, b) { naturalOrderCompare(a.addressLabel, b.addressLabel) }
+    );
+  };
+
+  public shared ({ caller }) func updateCustomerAddress(address : CustomerAddress) : async () {
+    ignore getCustomerAddressFromMap(address.id);
+    upsertCustomerAddress(address.id, address);
+  };
+
+  public shared ({ caller }) func deleteCustomerAddress(id : Text) : async () {
+    ignore getCustomerAddressFromMap(id);
+    customerAddresses.remove(id);
+  };
+
+  public shared ({ caller }) func setDefaultAddress(customerId : Text, addressId : Text) : async () {
+    let addresses = customerAddresses.toArray();
+    let filteredAddresses = addresses.filter(
+      func((_, addr)) { addr.customerId == customerId }
+    );
+    for ((addrId, addr) in filteredAddresses.values()) {
+      let newIsDefault = addr.id == addressId;
+      let updatedAddress = {
+        addr with
+        isDefault = newIsDefault;
+      };
+      customerAddresses.add(addrId, updatedAddress);
+    };
   };
 };
