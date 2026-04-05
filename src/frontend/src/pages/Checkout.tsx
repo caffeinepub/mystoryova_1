@@ -160,7 +160,7 @@ export default function Checkout({ isDark }: Props) {
   const discountedTotal = Math.max(0, subtotal - discount);
 
   function getItemShipping(item: CartItem): number {
-    if (freeShippingMap[item.id]) return 0;
+    if (freeShippingMap[item.productId ?? item.id]) return 0;
     return region === "india" ? shippingINR : shippingIntl;
   }
 
@@ -287,10 +287,10 @@ export default function Checkout({ isDark }: Props) {
           try {
             const orderItems: OrderItem[] = items.map((item) => {
               const link = MERCH_PAYMENT_LINKS.find(
-                (p) => p.productId === item.id,
+                (p) => p.productId === (item.productId ?? item.id),
               );
               return {
-                productId: item.id,
+                productId: item.productId ?? item.id,
                 name: item.name,
                 quantity: BigInt(item.quantity),
                 price: BigInt(
@@ -955,7 +955,8 @@ export default function Checkout({ isDark }: Props) {
               <div className="flex flex-col gap-4">
                 {items.map((item, i) => {
                   const itemShipping = getItemShipping(item);
-                  const isFreeShipping = freeShippingMap[item.id] === true;
+                  const isFreeShipping =
+                    freeShippingMap[item.productId ?? item.id] === true;
                   return (
                     <div
                       key={item.id}

@@ -108,7 +108,7 @@ export default function Cart({ isDark }: Props) {
                   }}
                 >
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span
                         className="font-semibold"
                         style={{
@@ -129,6 +129,19 @@ export default function Cart({ isDark }: Props) {
                         Merch
                       </Badge>
                     </div>
+                    {(item.selectedSize || item.selectedColor) && (
+                      <p className="text-xs mb-1" style={{ color: mutedColor }}>
+                        {item.selectedSize && (
+                          <span>Size: {item.selectedSize}</span>
+                        )}
+                        {item.selectedSize && item.selectedColor && (
+                          <span> · </span>
+                        )}
+                        {item.selectedColor && (
+                          <span>Color: {item.selectedColor}</span>
+                        )}
+                      </p>
+                    )}
                     <p className="text-sm" style={{ color: "#D4AF37" }}>
                       ₹{item.price} each
                     </p>

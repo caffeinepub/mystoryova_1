@@ -260,13 +260,14 @@ export default function Store({ isDark }: Props) {
           : Number(item.priceUSD) / 100;
     const name = `${item.name}${selectedSize ? ` (${selectedSize})` : ""}${selectedColor ? ` — ${selectedColor}` : ""}`;
     addToCart({
-      id: item.id,
+      productId: item.id,
       name,
       price,
       quantity: 1,
       type: "merch",
       currency,
-      selectedColor,
+      selectedSize: selectedSize ?? undefined,
+      selectedColor: selectedColor ?? undefined,
     });
     window.dispatchEvent(new Event("cart-update"));
     toast.success(`${name} added to cart!`);

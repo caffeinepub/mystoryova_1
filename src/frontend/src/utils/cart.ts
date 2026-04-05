@@ -1,11 +1,13 @@
 export interface CartItem {
-  id: string;
+  id: string; // unique cart key: productId_size_color
+  productId: string; // original product ID for Razorpay / shipping lookups
   name: string;
   price: number;
   type: "audiobook" | "merch";
   quantity: number;
   accessLink?: string;
   currency?: "INR" | "USD";
+  selectedSize?: string;
   selectedColor?: string;
 }
 
@@ -29,17 +31,23 @@ function saveCart(items: CartItem[]) {
   notifyUpdate();
 }
 
+/**
+ * Add an item to the cart. Each unique combination of productId + size + color
+ * is stored as a separate line item. Passing the same combination again
+ * increments the quantity instead of duplicating the row.
+ */
 export function addToCart(
-  item: Omit<CartItem, "quantity"> & { quantity?: number },
+  item: Omit<CartItem, "id" | "quantity"> & { quantity?: number },
 ) {
+  const cartId = `${item.productId}_${item.selectedSize ?? ""}_${item.selectedColor ?? ""}`;
   const cart = getCart();
-  const existing = cart.find((c) => c.id === item.id);
+  const existing = cart.find((c) => c.id === cartId);
   if (existing) {
     existing.quantity += item.quantity ?? 1;
     existing.currency = item.currency ?? existing.currency;
     saveCart(cart);
   } else {
-    saveCart([...cart, { ...item, quantity: item.quantity ?? 1 }]);
+    saveCart([...cart, { ...item, id: cartId, quantity: item.quantity ?? 1 }]);
   }
 }
 
