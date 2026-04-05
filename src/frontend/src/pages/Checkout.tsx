@@ -319,6 +319,8 @@ export default function Checkout({ isDark }: Props) {
               items: orderItems,
               shippingAddress,
               customerId: customer?.id,
+              fulfillmentStatus: "",
+              qikinkOrderId: "",
             };
             await actor.createOrder(order);
             if (couponApplied) await actor.incrementCouponUsage(couponApplied);

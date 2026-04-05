@@ -1,52 +1,37 @@
-# Mystoryova — Blob Storage Image Uploads
+# Mystoryova — Qikink Integration Phase 2
 
 ## Current State
 
-All product images (book covers, audiobook covers, merchandise photos) are:
-1. Compressed client-side to 300–600px wide at 40–75% quality (base64)
-2. Stored in the backend `settings` map with keys like `bookImg_{id}`, `audioImg_{id}`, `colorImg_{id}_{colorIdx}`, `productImages_{id}`
-3. Embedded as giant base64 data: URIs in the page HTML
-
-This causes:
-- Images are blurry due to aggressive compression
-- Zoom lens lags because base64 data URIs are not efficiently cached
-- Uploads still occasionally fail when payload approaches 2MB ICP limit
-
-The `blob-storage` Caffeine component is already integrated into the Motoko backend (`MixinStorage` mixin imported). The `StorageClient` class is already present in `src/frontend/src/utils/StorageClient.ts`. The `config.ts` already creates a StorageClient instance with proper configuration.
+- Backend has `updateOrderFulfillment(id, qikinkOrderId, fulfillmentStatus)` to record Qikink details on an order.
+- Backend has `syncQikinkCatalog()` and `getQikinkCatalog()` (Phase 1 complete).
+- `Order` type has `qikinkOrderId` and `fulfillmentStatus` fields.
+- `AdminOrders.tsx` shows Fulfillment and Qikink ID columns in the orders table but has NO button to trigger fulfillment.
+- No backend function exists to send an order to Qikink's API.
+- Admin settings has the Qikink toggle and API key saved as `qikink_enabled` and `qikink_api_key`.
 
 ## Requested Changes (Diff)
 
 ### Add
-- `src/frontend/src/utils/useStorageClient.ts` — a React hook that lazily initializes a `StorageClient` from the app config. Returns the client plus an `uploadImage(file: File)` helper that uploads raw bytes and returns a direct HTTP URL (no compression at all).
-- Upload progress indicator on image inputs in all admin forms.
+- **Backend:** `fulfillOrderViaQikink(orderId: Text)` — reads Qikink API key and enabled toggle from settings, looks up the order and its items (using `qikinkProductId` from merch items), constructs the Qikink fulfillment order payload, and sends it via HTTP outcall to `https://api.qikink.com/api/orders`. Returns a result text (Qikink order ID or error message). Updates the order's `qikinkOrderId` and `fulfillmentStatus` on success.
+- **Frontend (AdminOrders.tsx):** "Mark as Paid & Fulfill" button per order row (only visible when `fulfillmentStatus` is empty or "Pending" and `qikinkEnabled` is true). Clicking it calls `fulfillOrderViaQikink`, then refreshes the order. Also updates order status to "Processing" automatically.
+- **Frontend (AdminOrders.tsx):** Loading/spinner state per row during fulfillment call.
+- **Frontend (AdminOrders.tsx):** Fulfillment status badge improved — shows color-coded states: Pending (grey), Sent to Qikink (blue), Failed (red).
 
 ### Modify
-- `AdminBooks.tsx` — replace `compressImage()` with blob upload. Store the resulting URL directly in `coverImageUrl`. Remove canvas-based compression entirely.
-- `AdminStoreAudiobooks.tsx` — replace `compressImage()` with blob upload for the audiobook cover image. Store URL in the settings key `audioImg_{id}`.
-- `AdminStoreMerch.tsx` — replace `compressImage()` with blob upload for:
-  - Clothing per-color images (front/back/lifestyle): stored in `colorImg_{id}_{colorIdx}` as JSON with blob URLs instead of base64
-  - Non-clothing product images (primary/alternate/lifestyle): stored in `productImages_{id}` as JSON with blob URLs
-  - Standalone cover emoji/image field: blob URL if a file is selected
-- `Store.tsx` — no logic changes needed; images are already read from settings as URLs and rendered via `<img src={...}>`. Blob HTTP URLs work the same way.
-- `ZoomImage.tsx` — ensure zoom uses native `<img>` src without any base64 workarounds (it already does, no change needed if URLs are proper HTTP).
+- **Backend:** `fulfillOrderViaQikink` also calls `updateOrderFulfillment` internally to persist the Qikink order ID and new fulfillment status on success.
+- **AdminOrders.tsx:** Order detail modal shows Qikink order ID and fulfillment status.
+- **backend.d.ts:** Add `fulfillOrderViaQikink(orderId: string): Promise<string>` to interface.
 
 ### Remove
-- `compressImage()` function from AdminBooks.tsx and AdminStoreMerch.tsx
-- All `new Image()` / `canvas.toDataURL()` base64 compression code
+- Nothing removed.
 
 ## Implementation Plan
 
-1. Create `useStorageClient.ts` hook that:
-   - Calls `loadConfig()` once
-   - Creates an `HttpAgent` and `StorageClient`
-   - Exposes `uploadImage(file: File, onProgress?: (pct: number) => void): Promise<string>` which calls `storageClient.putFile(bytes)` then `storageClient.getDirectURL(hash)`
-2. Update `AdminBooks.tsx`:
-   - Import and use `useStorageClient`
-   - Replace the `<input type=file>` + canvas compress flow with: read file bytes → `uploadImage()` → set `form.coverImageUrl` to returned URL
-   - Show upload progress
-3. Update `AdminStoreAudiobooks.tsx`:
-   - Same pattern for the cover image field
-4. Update `AdminStoreMerch.tsx`:
-   - Replace `compressImage` usage in `ImageUploadField` component with blob upload
-   - Uploaded URLs are stored in the same settings keys (JSON strings), just now containing HTTP URLs instead of base64
-5. Validate and build
+1. Add `fulfillOrderViaQikink` to `src/backend/main.mo` — HTTP outcall to Qikink orders API, reads API key from settings, builds payload from order data and merch `qikinkProductId`, updates order on success.
+2. Update `src/frontend/src/backend.d.ts` to add `fulfillOrderViaQikink` signature.
+3. Update `src/frontend/src/admin/AdminOrders.tsx`:
+   - Add `fulfillOrder(orderId)` handler that calls `fulfillOrderViaQikink`, shows toast, refreshes
+   - Add "Mark as Paid & Fulfill" button in the actions column (hidden if already fulfilled or Qikink disabled)
+   - Load `qikink_enabled` setting from backend on mount
+   - Improve fulfillment status badge colors
+   - Show Qikink order ID and fulfillment status in order detail modal

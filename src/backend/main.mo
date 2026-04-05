@@ -1,17 +1,25 @@
 import Time "mo:core/Time";
 import List "mo:core/List";
 import Text "mo:core/Text";
+import Char "mo:core/Char";
 import Map "mo:core/Map";
 import Runtime "mo:core/Runtime";
 import Iter "mo:core/Iter";
 import Order "mo:core/Order";
+import IC "ic:aaaaa-aa";
+
+import OutCall "http-outcalls/outcall";
 
 import MixinStorage "blob-storage/Mixin";
 
 
 
-persistent actor {
+actor {
   include MixinStorage();
+
+  public query func transform(input : OutCall.TransformationInput) : async OutCall.TransformationOutput {
+    OutCall.transform(input);
+  };
 
   // Helper Functions
   func naturalOrderCompare(a : Text, b : Text) : Order.Order {
@@ -31,6 +39,15 @@ persistent actor {
     };
   };
 
+  func stringCompare(a : ?Text, b : ?Text) : Order.Order {
+    switch (a, b) {
+      case (null, null) { #equal };
+      case (null, ?_) { #less };
+      case (?_, null) { #greater };
+      case (?aVal, ?bVal) { naturalOrderCompare(aVal, bVal) };
+    };
+  };
+
   func getCustomerAddressFromMap(id : Text) : CustomerAddress {
     switch (customerAddresses.get(id)) {
       case (null) { Runtime.trap("Customer address with id " # id # " not found") };
@@ -40,6 +57,7 @@ persistent actor {
 
   // Data Types
   type BookFormat = { #kindle : Text; #paperback : Text };
+
   type Book = {
     id : Text;
     title : Text;
@@ -112,6 +130,7 @@ persistent actor {
     coverEmoji : Text;
     razorpayUrl : Text;
     isActive : Bool;
+    qikinkProductId : Text;
   };
 
   type Setting = {
@@ -167,6 +186,8 @@ persistent actor {
     createdAt : Int;
     razorpayPaymentId : Text;
     notes : Text;
+    qikinkOrderId : Text;
+    fulfillmentStatus : Text;
   };
 
   // Persistent Data Structures
@@ -184,7 +205,7 @@ persistent actor {
   let customerAccounts = Map.empty<Text, CustomerAccount>();
   let customerAddresses = Map.empty<Text, CustomerAddress>();
 
-  // Safe upsert helpers: remove existing key first so add() never traps
+  // Book Management
   func upsertBook(key : Text, value : Book) {
     books.remove(key);
     books.add(key, value);
@@ -235,7 +256,6 @@ persistent actor {
     customerAddresses.add(key, value);
   };
 
-  // Book Management
   public query func getBooks() : async [Book] {
     books.values().toArray();
   };
@@ -456,7 +476,9 @@ persistent actor {
 
   // Customer Account Management
   public shared ({ caller }) func registerCustomer(name : Text, email : Text, passwordHash : Text) : async ?Text {
+    // Check if email already exists (case-insensitive)
     let lowerEmail = email.toLower();
+
     switch (customerAccounts.values().find(func(a) { a.email.toLower() == lowerEmail })) {
       case (?_) { null };
       case (null) {
@@ -551,5 +573,125 @@ persistent actor {
       customerAddresses.add(addrId, updatedAddress);
     };
   };
-};
 
+  // Qikink Print-on-Demand Integration
+  public query func getQikinkCatalog() : async Text {
+    switch (settings.get("qikink_catalog_cache")) {
+      case (null) { "" };
+      case (?setting) { setting.value };
+    };
+  };
+
+  public shared ({ caller }) func syncQikinkCatalog() : async Text {
+    let apiKey = switch (settings.get("qikink_api_key")) {
+      case (null) { return "Qikink API key not configured" };
+      case (?setting) { setting.value };
+    };
+
+    let url = "https://api.qikink.com/api/catalog";
+    let headers = [ { name = "Authorization"; value = "Bearer " # apiKey } ];
+
+    let responsePromise = OutCall.httpGetRequest(url, headers, transform);
+    let response = await responsePromise;
+    upsertSetting("qikink_catalog_cache", { key = "qikink_catalog_cache"; value = response });
+    "Catalog synced successfully";
+  };
+
+  public shared ({ caller }) func updateOrderFulfillment(id : Text, qikinkOrderId : Text, fulfillmentStatus : Text) : async () {
+    let order = switch (orders.get(id)) {
+      case (null) { Runtime.trap("Order not found") };
+      case (?o) { o };
+    };
+    let updatedOrder = {
+      order with
+      qikinkOrderId;
+      fulfillmentStatus;
+    };
+    upsertOrder(id, updatedOrder);
+  };
+  // Qikink Order Fulfillment
+  public shared ({ caller }) func fulfillOrderViaQikink(orderId : Text) : async Text {
+    // Check if Qikink is enabled
+    switch (settings.get("qikink_enabled")) {
+      case (null) { return "Qikink integration is not enabled" };
+      case (?s) {
+        if (s.value != "true") { return "Qikink integration is disabled" };
+      };
+    };
+
+    // Get API key
+    let apiKey = switch (settings.get("qikink_api_key")) {
+      case (null) { return "Qikink API key not configured" };
+      case (?s) { s.value };
+    };
+
+    // Get order
+    let order = switch (orders.get(orderId)) {
+      case (null) { return "Order not found: " # orderId };
+      case (?o) { o };
+    };
+
+    // Build line items JSON array
+    var itemsJson = "[";
+    var firstItem = true;
+    for (item in order.items.vals()) {
+      if (not firstItem) { itemsJson #= "," };
+      firstItem := false;
+      let qikinkId = switch (merchItems.get(item.productId)) {
+        case (null) { item.productId };
+        case (?m) {
+          if (m.qikinkProductId != "") { m.qikinkProductId } else { item.productId }
+        };
+      };
+      let qty = item.quantity;
+      itemsJson #= "{\"product_id\":\"" # qikinkId # "\",\"quantity\":" # debug_show(qty) # "}";
+    };
+    itemsJson #= "]";
+
+    // Build shipping address JSON
+    let shippingJson = switch (order.shippingAddress) {
+      case (null) {
+        "{\"name\":\"" # order.customerName #
+        "\",\"email\":\"" # order.customerEmail #
+        "\",\"phone\":\"" # order.customerPhone #
+        "\",\"address1\":\"\",\"city\":\"\",\"state\":\"\",\"pincode\":\"\",\"country\":\"IN\"}"
+      };
+      case (?addr) {
+        "{\"name\":\"" # addr.fullName #
+        "\",\"email\":\"" # order.customerEmail #
+        "\",\"phone\":\"" # addr.phone #
+        "\",\"address1\":\"" # addr.line1 #
+        "\",\"address2\":\"" # addr.line2 #
+        "\",\"city\":\"" # addr.city #
+        "\",\"state\":\"" # addr.state #
+        "\",\"pincode\":\"" # addr.pincode #
+        "\",\"country\":\"" # addr.country # "\"}"
+      };
+    };
+
+    let payload =
+      "{\"reference_id\":\"" # order.id #
+      "\",\"shipping_address\":" # shippingJson #
+      ",\"line_items\":" # itemsJson # "}";
+
+    let url = "https://api.qikink.com/api/orders";
+    let headers = [
+      { name = "Authorization"; value = "Bearer " # apiKey },
+      { name = "Content-Type"; value = "application/json" },
+    ];
+
+    let response = await OutCall.httpPostRequest(url, headers, payload, transform);
+
+    // Update order with Qikink response data
+    let updatedOrder = {
+      order with
+      qikinkOrderId = response;
+      fulfillmentStatus = "Sent to Qikink";
+      status = "Processing";
+    };
+    upsertOrder(orderId, updatedOrder);
+
+    response
+  };
+
+};

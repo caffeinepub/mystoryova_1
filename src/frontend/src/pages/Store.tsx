@@ -53,6 +53,7 @@ const SEED_MERCH: MerchItem[] = MERCH_ITEMS.map((m) => ({
   razorpayUrl: "",
   priceINR: BigInt(Math.round(m.price * 100)),
   priceUSD: BigInt(Math.round(m.priceUSD * 100)),
+  qikinkProductId: "",
 }));
 
 const SIZE_CHART = [

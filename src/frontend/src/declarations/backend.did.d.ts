@@ -82,6 +82,7 @@ export interface MerchItem {
   'name' : string,
   'description' : string,
   'isActive' : boolean,
+  'qikinkProductId' : string,
   'category' : string,
   'priceINR' : bigint,
   'priceUSD' : bigint,
@@ -91,7 +92,9 @@ export interface Order {
   'razorpayPaymentId' : string,
   'customerName' : string,
   'status' : string,
+  'fulfillmentStatus' : string,
   'customerPhone' : string,
+  'qikinkOrderId' : string,
   'createdAt' : bigint,
   'totalAmount' : bigint,
   'currency' : string,
@@ -126,6 +129,15 @@ export interface ShippingAddress {
   'phone' : string,
   'pincode' : string,
 }
+export interface TransformationInput {
+  'context' : Uint8Array,
+  'response' : http_request_result,
+}
+export interface TransformationOutput {
+  'status' : bigint,
+  'body' : Uint8Array,
+  'headers' : Array<http_header>,
+}
 export interface _CaffeineStorageCreateCertificateResult {
   'method' : string,
   'blob_hash' : string,
@@ -136,6 +148,12 @@ export interface _CaffeineStorageRefillInformation {
 export interface _CaffeineStorageRefillResult {
   'success' : [] | [boolean],
   'topped_up_amount' : [] | [bigint],
+}
+export interface http_header { 'value' : string, 'name' : string }
+export interface http_request_result {
+  'status' : bigint,
+  'body' : Uint8Array,
+  'headers' : Array<http_header>,
 }
 export interface _SERVICE {
   '_caffeineStorageBlobIsLive' : ActorMethod<[Uint8Array], boolean>,
@@ -186,6 +204,7 @@ export interface _SERVICE {
   'getMerchItems' : ActorMethod<[], Array<MerchItem>>,
   'getOrder' : ActorMethod<[string], [] | [Order]>,
   'getOrders' : ActorMethod<[], Array<Order>>,
+  'getQikinkCatalog' : ActorMethod<[], string>,
   'getReviews' : ActorMethod<[string], Array<Review>>,
   'getSetting' : ActorMethod<[string], [] | [Setting]>,
   'getSubscribers' : ActorMethod<[], Array<string>>,
@@ -194,6 +213,8 @@ export interface _SERVICE {
   'registerCustomer' : ActorMethod<[string, string, string], [] | [string]>,
   'removeSubscriber' : ActorMethod<[string], undefined>,
   'setDefaultAddress' : ActorMethod<[string, string], undefined>,
+  'syncQikinkCatalog' : ActorMethod<[], string>,
+  'transform' : ActorMethod<[TransformationInput], TransformationOutput>,
   'updateAudiobook' : ActorMethod<[Audiobook], undefined>,
   'updateAuthorBio' : ActorMethod<[string], undefined>,
   'updateBlogPost' : ActorMethod<[BlogPost], undefined>,
@@ -201,6 +222,7 @@ export interface _SERVICE {
   'updateCustomer' : ActorMethod<[CustomerAccount], undefined>,
   'updateCustomerAddress' : ActorMethod<[CustomerAddress], undefined>,
   'updateMerchItem' : ActorMethod<[MerchItem], undefined>,
+  'updateOrderFulfillment' : ActorMethod<[string, string, string], undefined>,
   'updateOrderStatus' : ActorMethod<[string, string], undefined>,
   'updateSetting' : ActorMethod<[Setting], undefined>,
   'validateCoupon' : ActorMethod<[string], [] | [Coupon]>,

@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Download, Eye, Trash2 } from "lucide-react";
+import { Download, Eye, PackageCheck, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { Order } from "../backend.d";
@@ -41,6 +41,12 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   Cancelled: { bg: "rgba(239,68,68,0.15)", color: "#EF4444" },
 };
 
+const FULFILLMENT_COLORS: Record<string, { bg: string; color: string }> = {
+  "Sent to Qikink": { bg: "rgba(59,130,246,0.15)", color: "#3B82F6" },
+  Failed: { bg: "rgba(239,68,68,0.15)", color: "#EF4444" },
+  Pending: { bg: "rgba(100,100,100,0.12)", color: "#666" },
+};
+
 function exportCSV(orders: Order[]) {
   const headers = [
     "ID",
@@ -48,6 +54,8 @@ function exportCSV(orders: Order[]) {
     "Email",
     "Phone",
     "Status",
+    "Fulfillment",
+    "Qikink ID",
     "Amount",
     "Currency",
     "Payment ID",
@@ -60,6 +68,8 @@ function exportCSV(orders: Order[]) {
     o.customerEmail,
     o.customerPhone,
     o.status,
+    o.fulfillmentStatus || "Pending",
+    o.qikinkOrderId || "",
     (Number(o.totalAmount) / 100).toFixed(2),
     o.currency,
     o.razorpayPaymentId,
@@ -87,6 +97,8 @@ export default function AdminOrders() {
   const [viewOrder, setViewOrder] = useState<Order | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [fulfillingId, setFulfillingId] = useState<string | null>(null);
+  const [qikinkEnabled, setQikinkEnabled] = useState(false);
 
   async function load() {
     if (!actor) return;
@@ -102,7 +114,15 @@ export default function AdminOrders() {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: load is stable
   useEffect(() => {
-    if (actor) load();
+    if (!actor) return;
+    load();
+    // Load Qikink enabled setting
+    actor
+      .getSetting("qikink_enabled")
+      .then((s) => {
+        if (s && s.value === "true") setQikinkEnabled(true);
+      })
+      .catch(() => {});
   }, [actor]);
 
   async function handleStatusChange(orderId: string, status: string) {
@@ -118,6 +138,32 @@ export default function AdminOrders() {
       toast.error("Update failed");
     }
     setUpdatingId(null);
+  }
+
+  async function handleFulfill(orderId: string) {
+    if (!actor) return;
+    setFulfillingId(orderId);
+    try {
+      const result = await actor.fulfillOrderViaQikink(orderId);
+      if (
+        result.startsWith("Qikink integration") ||
+        result.startsWith("Order not found") ||
+        result.startsWith("Qikink API key")
+      ) {
+        toast.error(result);
+      } else {
+        toast.success("Order sent to Qikink for fulfillment");
+        // Refresh to get updated fulfillment status
+        await load();
+      }
+    } catch (err) {
+      toast.error(
+        `Fulfillment failed: ${
+          err instanceof Error ? err.message.slice(0, 80) : String(err)
+        }`,
+      );
+    }
+    setFulfillingId(null);
   }
 
   async function handleDelete() {
@@ -176,7 +222,11 @@ export default function AdminOrders() {
                   filter === s
                     ? "rgba(212,175,55,0.15)"
                     : "rgba(255,255,255,0.03)",
-                border: `1px solid ${filter === s ? "rgba(212,175,55,0.4)" : "rgba(255,255,255,0.08)"}`,
+                border: `1px solid ${
+                  filter === s
+                    ? "rgba(212,175,55,0.4)"
+                    : "rgba(255,255,255,0.08)"
+                }`,
                 color: filter === s ? "#D4AF37" : "#888",
               }}
             >
@@ -231,6 +281,8 @@ export default function AdminOrders() {
                     "Customer",
                     "Amount",
                     "Status",
+                    "Fulfillment",
+                    "Qikink ID",
                     "Date",
                     "Actions",
                   ].map((h) => (
@@ -245,106 +297,186 @@ export default function AdminOrders() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((order, i) => (
-                  <tr
-                    key={order.id}
-                    data-ocid={`admin.orders.row.${i + 1}`}
-                    style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}
-                  >
-                    <td
-                      className="py-3 px-4 font-mono text-xs"
-                      style={{ color: "#D4AF37" }}
+                {filtered.map((order, i) => {
+                  const fulfillStatus = order.fulfillmentStatus || "Pending";
+                  const fulfillColors = FULFILLMENT_COLORS[fulfillStatus] ?? {
+                    bg: "rgba(100,100,100,0.12)",
+                    color: "#666",
+                  };
+                  const canFulfill =
+                    qikinkEnabled &&
+                    (!order.fulfillmentStatus ||
+                      order.fulfillmentStatus === "Pending" ||
+                      order.fulfillmentStatus === "") &&
+                    order.status !== "Cancelled";
+
+                  return (
+                    <tr
+                      key={order.id}
+                      data-ocid={`admin.orders.row.${i + 1}`}
+                      style={{
+                        borderBottom: "1px solid rgba(255,255,255,0.03)",
+                      }}
                     >
-                      {order.id.slice(0, 16)}...
-                    </td>
-                    <td className="py-3 px-4">
-                      <div style={{ color: "#f0ead6" }}>
-                        {order.customerName}
-                      </div>
-                      <div className="text-xs" style={{ color: "#555" }}>
-                        {order.customerEmail}
-                      </div>
-                    </td>
-                    <td
-                      className="py-3 px-4 font-semibold"
-                      style={{ color: "#f0ead6" }}
-                    >
-                      {order.currency === "INR" ? "₹" : "$"}
-                      {(Number(order.totalAmount) / 100).toFixed(2)}
-                    </td>
-                    <td className="py-3 px-4">
-                      <Select
-                        value={order.status}
-                        onValueChange={(v) => handleStatusChange(order.id, v)}
-                        disabled={updatingId === order.id}
+                      <td
+                        className="py-3 px-4 font-mono text-xs"
+                        style={{ color: "#D4AF37" }}
                       >
-                        <SelectTrigger
-                          className="h-7 text-xs w-36"
+                        {order.id.slice(0, 16)}...
+                      </td>
+                      <td className="py-3 px-4">
+                        <div style={{ color: "#f0ead6" }}>
+                          {order.customerName}
+                        </div>
+                        <div className="text-xs" style={{ color: "#555" }}>
+                          {order.customerEmail}
+                        </div>
+                      </td>
+                      <td
+                        className="py-3 px-4 font-semibold"
+                        style={{ color: "#f0ead6" }}
+                      >
+                        {order.currency === "INR" ? "₹" : "$"}
+                        {(Number(order.totalAmount) / 100).toFixed(2)}
+                      </td>
+                      <td className="py-3 px-4">
+                        <Select
+                          value={order.status}
+                          onValueChange={(v) => handleStatusChange(order.id, v)}
+                          disabled={updatingId === order.id}
+                        >
+                          <SelectTrigger
+                            className="h-7 text-xs w-36"
+                            style={{
+                              background:
+                                STATUS_COLORS[order.status]?.bg ??
+                                "rgba(255,255,255,0.05)",
+                              border: "none",
+                              color:
+                                STATUS_COLORS[order.status]?.color ?? "#888",
+                            }}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent
+                            style={{
+                              background: "#1a1a1a",
+                              border: "1px solid rgba(212,175,55,0.2)",
+                            }}
+                          >
+                            {[
+                              "Pending",
+                              "Processing",
+                              "Shipped",
+                              "Delivered",
+                              "Cancelled",
+                            ].map((s) => (
+                              <SelectItem key={s} value={s}>
+                                {s}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
+                      <td className="py-3 px-4 text-xs">
+                        <span
+                          className="px-2 py-0.5 rounded-full text-xs font-medium"
                           style={{
-                            background:
-                              STATUS_COLORS[order.status]?.bg ??
-                              "rgba(255,255,255,0.05)",
-                            border: "none",
-                            color: STATUS_COLORS[order.status]?.color ?? "#888",
+                            background: fulfillColors.bg,
+                            color: fulfillColors.color,
                           }}
                         >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent
-                          style={{
-                            background: "#1a1a1a",
-                            border: "1px solid rgba(212,175,55,0.2)",
-                          }}
-                        >
-                          {[
-                            "Pending",
-                            "Processing",
-                            "Shipped",
-                            "Delivered",
-                            "Cancelled",
-                          ].map((s) => (
-                            <SelectItem key={s} value={s}>
-                              {s}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="py-3 px-4 text-xs" style={{ color: "#555" }}>
-                      {new Date(
-                        Number(order.createdAt) / 1_000_000,
-                      ).toLocaleDateString()}
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          data-ocid={`admin.orders.secondary_button.${i + 1}`}
-                          onClick={() => setViewOrder(order)}
-                          className="p-1.5 rounded"
-                          style={{
-                            color: "#D4AF37",
-                            background: "rgba(212,175,55,0.08)",
-                          }}
-                        >
-                          <Eye size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          data-ocid={`admin.orders.delete_button.${i + 1}`}
-                          onClick={() => setDeleteId(order.id)}
-                          className="p-1.5 rounded"
-                          style={{
-                            color: "#EF4444",
-                            background: "rgba(239,68,68,0.08)",
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {fulfillStatus}
+                        </span>
+                      </td>
+                      <td
+                        className="py-3 px-4 text-xs font-mono"
+                        style={{
+                          color: "#555",
+                          maxWidth: "120px",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={order.qikinkOrderId || ""}
+                      >
+                        {order.qikinkOrderId ? (
+                          order.qikinkOrderId.slice(0, 18) +
+                          (order.qikinkOrderId.length > 18 ? "..." : "")
+                        ) : (
+                          <span style={{ color: "#333" }}>—</span>
+                        )}
+                      </td>
+                      <td
+                        className="py-3 px-4 text-xs"
+                        style={{ color: "#555" }}
+                      >
+                        {new Date(
+                          Number(order.createdAt) / 1_000_000,
+                        ).toLocaleDateString()}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex gap-1.5 items-center">
+                          {/* Mark as Paid & Fulfill button (Qikink only) */}
+                          {canFulfill && (
+                            <button
+                              type="button"
+                              data-ocid={`admin.orders.fulfill_button.${i + 1}`}
+                              onClick={() => handleFulfill(order.id)}
+                              disabled={fulfillingId === order.id}
+                              title="Mark as Paid & Fulfill via Qikink"
+                              className="p-1.5 rounded flex items-center gap-1 text-xs font-medium"
+                              style={{
+                                color: "#22C55E",
+                                background: "rgba(34,197,94,0.08)",
+                                border: "1px solid rgba(34,197,94,0.2)",
+                                opacity: fulfillingId === order.id ? 0.5 : 1,
+                                cursor:
+                                  fulfillingId === order.id
+                                    ? "not-allowed"
+                                    : "pointer",
+                                minWidth: "28px",
+                              }}
+                            >
+                              {fulfillingId === order.id ? (
+                                <PackageCheck
+                                  size={14}
+                                  className="animate-pulse"
+                                />
+                              ) : (
+                                <PackageCheck size={14} />
+                              )}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            data-ocid={`admin.orders.secondary_button.${i + 1}`}
+                            onClick={() => setViewOrder(order)}
+                            className="p-1.5 rounded"
+                            style={{
+                              color: "#D4AF37",
+                              background: "rgba(212,175,55,0.08)",
+                            }}
+                          >
+                            <Eye size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            data-ocid={`admin.orders.delete_button.${i + 1}`}
+                            onClick={() => setDeleteId(order.id)}
+                            className="p-1.5 rounded"
+                            style={{
+                              color: "#EF4444",
+                              background: "rgba(239,68,68,0.08)",
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -398,6 +530,11 @@ export default function AdminOrders() {
                 ["Email", viewOrder.customerEmail],
                 ["Phone", viewOrder.customerPhone],
                 ["Status", viewOrder.status],
+                [
+                  "Fulfillment Status",
+                  viewOrder.fulfillmentStatus || "Pending",
+                ],
+                ["Qikink Order ID", viewOrder.qikinkOrderId || "—"],
                 ["Payment ID", viewOrder.razorpayPaymentId],
                 ["Currency", viewOrder.currency],
                 [
@@ -431,6 +568,33 @@ export default function AdminOrders() {
                 </div>
               ))}
             </div>
+            {viewOrder.shippingAddress && (
+              <div className="mt-4">
+                <p
+                  className="text-xs uppercase tracking-widest mb-2"
+                  style={{ color: "#555" }}
+                >
+                  Shipping Address
+                </p>
+                <div className="text-sm" style={{ color: "#f0ead6" }}>
+                  <div>{viewOrder.shippingAddress.fullName}</div>
+                  <div style={{ color: "#888" }}>
+                    {viewOrder.shippingAddress.line1}
+                    {viewOrder.shippingAddress.line2
+                      ? `, ${viewOrder.shippingAddress.line2}`
+                      : ""}
+                  </div>
+                  <div style={{ color: "#888" }}>
+                    {viewOrder.shippingAddress.city},{" "}
+                    {viewOrder.shippingAddress.state}{" "}
+                    {viewOrder.shippingAddress.pincode}
+                  </div>
+                  <div style={{ color: "#888" }}>
+                    {viewOrder.shippingAddress.country}
+                  </div>
+                </div>
+              </div>
+            )}
             {viewOrder.items.length > 0 && (
               <div className="mt-4">
                 <p
@@ -456,9 +620,39 @@ export default function AdminOrders() {
                 ))}
               </div>
             )}
+            {/* Fulfill button in modal if applicable */}
+            {qikinkEnabled &&
+              (!viewOrder.fulfillmentStatus ||
+                viewOrder.fulfillmentStatus === "Pending" ||
+                viewOrder.fulfillmentStatus === "") &&
+              viewOrder.status !== "Cancelled" && (
+                <button
+                  type="button"
+                  data-ocid="admin.orders.fulfill_modal_button"
+                  disabled={fulfillingId === viewOrder.id}
+                  onClick={async () => {
+                    await handleFulfill(viewOrder.id);
+                    setViewOrder(null);
+                  }}
+                  className="w-full mt-4 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
+                  style={{
+                    background: "rgba(34,197,94,0.1)",
+                    border: "1px solid rgba(34,197,94,0.3)",
+                    color: "#22C55E",
+                    cursor:
+                      fulfillingId === viewOrder.id ? "not-allowed" : "pointer",
+                    opacity: fulfillingId === viewOrder.id ? 0.6 : 1,
+                  }}
+                >
+                  <PackageCheck size={16} />
+                  {fulfillingId === viewOrder.id
+                    ? "Sending to Qikink..."
+                    : "Mark as Paid & Fulfill via Qikink"}
+                </button>
+              )}
             <Button
               data-ocid="admin.orders.close_button"
-              className="w-full mt-5"
+              className="w-full mt-3"
               onClick={() => setViewOrder(null)}
               style={{
                 background: "rgba(212,175,55,0.1)",

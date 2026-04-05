@@ -93,6 +93,7 @@ export const MerchItem = IDL.Record({
   'name' : IDL.Text,
   'description' : IDL.Text,
   'isActive' : IDL.Bool,
+  'qikinkProductId' : IDL.Text,
   'category' : IDL.Text,
   'priceINR' : IDL.Nat,
   'priceUSD' : IDL.Nat,
@@ -119,7 +120,9 @@ export const Order = IDL.Record({
   'razorpayPaymentId' : IDL.Text,
   'customerName' : IDL.Text,
   'status' : IDL.Text,
+  'fulfillmentStatus' : IDL.Text,
   'customerPhone' : IDL.Text,
+  'qikinkOrderId' : IDL.Text,
   'createdAt' : IDL.Int,
   'totalAmount' : IDL.Nat,
   'currency' : IDL.Text,
@@ -136,6 +139,24 @@ export const CustomerAccount = IDL.Record({
   'createdAt' : IDL.Int,
   'email' : IDL.Text,
   'passwordHash' : IDL.Text,
+});
+export const http_header = IDL.Record({
+  'value' : IDL.Text,
+  'name' : IDL.Text,
+});
+export const http_request_result = IDL.Record({
+  'status' : IDL.Nat,
+  'body' : IDL.Vec(IDL.Nat8),
+  'headers' : IDL.Vec(http_header),
+});
+export const TransformationInput = IDL.Record({
+  'context' : IDL.Vec(IDL.Nat8),
+  'response' : http_request_result,
+});
+export const TransformationOutput = IDL.Record({
+  'status' : IDL.Nat,
+  'body' : IDL.Vec(IDL.Nat8),
+  'headers' : IDL.Vec(http_header),
 });
 
 export const idlService = IDL.Service({
@@ -206,6 +227,7 @@ export const idlService = IDL.Service({
   'getMerchItems' : IDL.Func([], [IDL.Vec(MerchItem)], ['query']),
   'getOrder' : IDL.Func([IDL.Text], [IDL.Opt(Order)], ['query']),
   'getOrders' : IDL.Func([], [IDL.Vec(Order)], ['query']),
+  'getQikinkCatalog' : IDL.Func([], [IDL.Text], ['query']),
   'getReviews' : IDL.Func([IDL.Text], [IDL.Vec(Review)], ['query']),
   'getSetting' : IDL.Func([IDL.Text], [IDL.Opt(Setting)], ['query']),
   'getSubscribers' : IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
@@ -222,6 +244,12 @@ export const idlService = IDL.Service({
     ),
   'removeSubscriber' : IDL.Func([IDL.Text], [], []),
   'setDefaultAddress' : IDL.Func([IDL.Text, IDL.Text], [], []),
+  'syncQikinkCatalog' : IDL.Func([], [IDL.Text], []),
+  'transform' : IDL.Func(
+      [TransformationInput],
+      [TransformationOutput],
+      ['query'],
+    ),
   'updateAudiobook' : IDL.Func([Audiobook], [], []),
   'updateAuthorBio' : IDL.Func([IDL.Text], [], []),
   'updateBlogPost' : IDL.Func([BlogPost], [], []),
@@ -229,6 +257,7 @@ export const idlService = IDL.Service({
   'updateCustomer' : IDL.Func([CustomerAccount], [], []),
   'updateCustomerAddress' : IDL.Func([CustomerAddress], [], []),
   'updateMerchItem' : IDL.Func([MerchItem], [], []),
+  'updateOrderFulfillment' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [], []),
   'updateOrderStatus' : IDL.Func([IDL.Text, IDL.Text], [], []),
   'updateSetting' : IDL.Func([Setting], [], []),
   'validateCoupon' : IDL.Func([IDL.Text], [IDL.Opt(Coupon)], ['query']),
@@ -322,6 +351,7 @@ export const idlFactory = ({ IDL }) => {
     'name' : IDL.Text,
     'description' : IDL.Text,
     'isActive' : IDL.Bool,
+    'qikinkProductId' : IDL.Text,
     'category' : IDL.Text,
     'priceINR' : IDL.Nat,
     'priceUSD' : IDL.Nat,
@@ -348,7 +378,9 @@ export const idlFactory = ({ IDL }) => {
     'razorpayPaymentId' : IDL.Text,
     'customerName' : IDL.Text,
     'status' : IDL.Text,
+    'fulfillmentStatus' : IDL.Text,
     'customerPhone' : IDL.Text,
+    'qikinkOrderId' : IDL.Text,
     'createdAt' : IDL.Int,
     'totalAmount' : IDL.Nat,
     'currency' : IDL.Text,
@@ -365,6 +397,21 @@ export const idlFactory = ({ IDL }) => {
     'createdAt' : IDL.Int,
     'email' : IDL.Text,
     'passwordHash' : IDL.Text,
+  });
+  const http_header = IDL.Record({ 'value' : IDL.Text, 'name' : IDL.Text });
+  const http_request_result = IDL.Record({
+    'status' : IDL.Nat,
+    'body' : IDL.Vec(IDL.Nat8),
+    'headers' : IDL.Vec(http_header),
+  });
+  const TransformationInput = IDL.Record({
+    'context' : IDL.Vec(IDL.Nat8),
+    'response' : http_request_result,
+  });
+  const TransformationOutput = IDL.Record({
+    'status' : IDL.Nat,
+    'body' : IDL.Vec(IDL.Nat8),
+    'headers' : IDL.Vec(http_header),
   });
   
   return IDL.Service({
@@ -435,6 +482,7 @@ export const idlFactory = ({ IDL }) => {
     'getMerchItems' : IDL.Func([], [IDL.Vec(MerchItem)], ['query']),
     'getOrder' : IDL.Func([IDL.Text], [IDL.Opt(Order)], ['query']),
     'getOrders' : IDL.Func([], [IDL.Vec(Order)], ['query']),
+    'getQikinkCatalog' : IDL.Func([], [IDL.Text], ['query']),
     'getReviews' : IDL.Func([IDL.Text], [IDL.Vec(Review)], ['query']),
     'getSetting' : IDL.Func([IDL.Text], [IDL.Opt(Setting)], ['query']),
     'getSubscribers' : IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
@@ -451,6 +499,12 @@ export const idlFactory = ({ IDL }) => {
       ),
     'removeSubscriber' : IDL.Func([IDL.Text], [], []),
     'setDefaultAddress' : IDL.Func([IDL.Text, IDL.Text], [], []),
+    'syncQikinkCatalog' : IDL.Func([], [IDL.Text], []),
+    'transform' : IDL.Func(
+        [TransformationInput],
+        [TransformationOutput],
+        ['query'],
+      ),
     'updateAudiobook' : IDL.Func([Audiobook], [], []),
     'updateAuthorBio' : IDL.Func([IDL.Text], [], []),
     'updateBlogPost' : IDL.Func([BlogPost], [], []),
@@ -458,6 +512,7 @@ export const idlFactory = ({ IDL }) => {
     'updateCustomer' : IDL.Func([CustomerAccount], [], []),
     'updateCustomerAddress' : IDL.Func([CustomerAddress], [], []),
     'updateMerchItem' : IDL.Func([MerchItem], [], []),
+    'updateOrderFulfillment' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [], []),
     'updateOrderStatus' : IDL.Func([IDL.Text, IDL.Text], [], []),
     'updateSetting' : IDL.Func([Setting], [], []),
     'validateCoupon' : IDL.Func([IDL.Text], [IDL.Opt(Coupon)], ['query']),

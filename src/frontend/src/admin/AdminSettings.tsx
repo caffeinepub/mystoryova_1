@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Check, Edit2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Check, Edit2, Loader2, Package, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -56,12 +57,29 @@ const DEFAULT_SETTINGS = [
   },
 ];
 
+interface QikinkProduct {
+  id?: string;
+  name?: string;
+  sku?: string;
+  [key: string]: unknown;
+}
+
 export default function AdminSettings() {
   const { actor } = useActor();
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Record<string, string>>({});
   const [activeEdit, setActiveEdit] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+
+  // Qikink section state
+  const [qikinkEnabled, setQikinkEnabled] = useState(false);
+  const [qikinkApiKey, setQikinkApiKey] = useState(
+    "e5ed89259ecdbf28715642580b0e933c7a7c7f37db45f5df8876e0c7381bf5bd",
+  );
+  const [savingQikink, setSavingQikink] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [catalogProducts, setCatalogProducts] = useState<QikinkProduct[]>([]);
+  const [catalogCount, setCatalogCount] = useState<number | null>(null);
 
   useEffect(() => {
     if (!actor) return;
@@ -72,6 +90,13 @@ export default function AdminSettings() {
         for (const s of all) map[s.key] = s.value;
         setSettings(map);
         setEditing(map);
+        // Load Qikink settings
+        if (map.qikink_enabled !== undefined) {
+          setQikinkEnabled(map.qikink_enabled === "true");
+        }
+        if (map.qikink_api_key) {
+          setQikinkApiKey(map.qikink_api_key);
+        }
       })
       .catch(() => {
         // error ignored
@@ -90,6 +115,67 @@ export default function AdminSettings() {
       toast.error("Save failed");
     }
     setSaving(null);
+  }
+
+  async function saveQikinkSettings() {
+    if (!actor) return;
+    setSavingQikink(true);
+    try {
+      await Promise.all([
+        actor.updateSetting({
+          key: "qikink_enabled",
+          value: qikinkEnabled ? "true" : "false",
+        }),
+        actor.updateSetting({ key: "qikink_api_key", value: qikinkApiKey }),
+      ]);
+      toast.success("Qikink settings saved");
+    } catch {
+      toast.error("Failed to save Qikink settings");
+    }
+    setSavingQikink(false);
+  }
+
+  async function syncCatalog() {
+    if (!actor) return;
+    setSyncing(true);
+    try {
+      const result = await actor.syncQikinkCatalog();
+      toast.success(result || "Catalog synced successfully");
+      // Fetch the catalog to display
+      const catalogJson = await actor.getQikinkCatalog();
+      if (catalogJson) {
+        try {
+          const parsed = JSON.parse(catalogJson);
+          if (Array.isArray(parsed)) {
+            setCatalogProducts(parsed as QikinkProduct[]);
+            setCatalogCount(parsed.length);
+          } else if (parsed && typeof parsed === "object") {
+            // Might be wrapped in a data/products key
+            const arr =
+              (parsed as Record<string, unknown>).products ||
+              (parsed as Record<string, unknown>).data ||
+              (parsed as Record<string, unknown>).items;
+            if (Array.isArray(arr)) {
+              setCatalogProducts(arr as QikinkProduct[]);
+              setCatalogCount((arr as QikinkProduct[]).length);
+            } else {
+              setCatalogCount(0);
+              setCatalogProducts([]);
+            }
+          }
+        } catch {
+          setCatalogCount(null);
+          setCatalogProducts([]);
+        }
+      }
+    } catch (err) {
+      toast.error(
+        `Sync failed: ${
+          err instanceof Error ? err.message.slice(0, 80) : String(err)
+        }`,
+      );
+    }
+    setSyncing(false);
   }
 
   const cardStyle = {
@@ -290,6 +376,187 @@ export default function AdminSettings() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Qikink Integration */}
+      <div>
+        <h3
+          className="font-bold text-base mb-1 flex items-center gap-2"
+          style={{ fontFamily: "Playfair Display, serif", color: "#D4AF37" }}
+        >
+          <Package size={16} />
+          Print-on-Demand Integration
+        </h3>
+        <p className="text-xs mb-4" style={{ color: "#555" }}>
+          Manage fulfillment settings for merchandise orders.
+        </p>
+        <div
+          className="rounded-xl p-5 flex flex-col gap-5"
+          style={{
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(212,175,55,0.18)",
+          }}
+        >
+          {/* Enable toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <Label
+                className="block text-sm font-semibold"
+                style={{ color: "#f0ead6" }}
+              >
+                Enable Fulfillment Integration
+              </Label>
+              <p className="text-xs mt-0.5" style={{ color: "#555" }}>
+                When enabled, merchandise orders can be fulfilled automatically
+              </p>
+            </div>
+            <Switch
+              data-ocid="admin.settings.switch"
+              checked={qikinkEnabled}
+              onCheckedChange={setQikinkEnabled}
+            />
+          </div>
+
+          {/* API key field */}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs" style={{ color: "#666" }}>
+              API Key
+            </Label>
+            <Input
+              data-ocid="admin.settings.input"
+              type="password"
+              value={qikinkApiKey}
+              onChange={(e) => setQikinkApiKey(e.target.value)}
+              placeholder="Fulfillment provider API key"
+              style={inputStyle}
+            />
+          </div>
+
+          {/* Save button */}
+          <div className="flex gap-3">
+            <Button
+              data-ocid="admin.settings.save_button"
+              disabled={savingQikink}
+              onClick={saveQikinkSettings}
+              style={{
+                background: "linear-gradient(135deg, #D4AF37, #F0D060)",
+                color: "#0a0a0a",
+                fontWeight: 600,
+              }}
+            >
+              {savingQikink ? (
+                <Loader2 size={14} className="mr-2 animate-spin" />
+              ) : (
+                <Check size={14} className="mr-2" />
+              )}
+              {savingQikink ? "Saving..." : "Save Integration Settings"}
+            </Button>
+
+            {/* Sync catalog button */}
+            <Button
+              data-ocid="admin.settings.secondary_button"
+              variant="outline"
+              disabled={syncing || !qikinkEnabled}
+              onClick={syncCatalog}
+              title={
+                !qikinkEnabled
+                  ? "Enable integration first"
+                  : "Sync product catalog"
+              }
+              style={{
+                borderColor: "rgba(212,175,55,0.3)",
+                color: qikinkEnabled ? "#D4AF37" : "#444",
+                opacity: !qikinkEnabled ? 0.5 : 1,
+              }}
+            >
+              {syncing ? (
+                <Loader2 size={14} className="mr-2 animate-spin" />
+              ) : (
+                <RefreshCw size={14} className="mr-2" />
+              )}
+              {syncing ? "Syncing..." : "Sync Catalog"}
+            </Button>
+          </div>
+
+          {/* Catalog results */}
+          {catalogCount !== null && (
+            <div
+              className="rounded-lg p-4"
+              style={{
+                background: "rgba(0,0,0,0.2)",
+                border: "1px solid rgba(212,175,55,0.1)",
+              }}
+            >
+              <p
+                className="text-xs font-semibold mb-3"
+                style={{ color: "#D4AF37" }}
+              >
+                <Package size={12} className="inline mr-1" />
+                {catalogProducts.length > 0
+                  ? `${catalogCount} products synced`
+                  : "No products found in catalog"}
+              </p>
+              {catalogProducts.length > 0 && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr
+                        style={{
+                          borderBottom: "1px solid rgba(212,175,55,0.1)",
+                        }}
+                      >
+                        {["Product Name", "Product ID / SKU"].map((h) => (
+                          <th
+                            key={h}
+                            className="text-left py-2 px-3 uppercase tracking-wider"
+                            style={{ color: "#555" }}
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {catalogProducts.slice(0, 20).map((p, i) => (
+                        <tr
+                          key={`${p.id ?? i}`}
+                          data-ocid={`admin.settings.row.${i + 1}`}
+                          style={{
+                            borderBottom: "1px solid rgba(255,255,255,0.03)",
+                          }}
+                        >
+                          <td
+                            className="py-2 px-3"
+                            style={{ color: "#f0ead6" }}
+                          >
+                            {p.name ?? "—"}
+                          </td>
+                          <td
+                            className="py-2 px-3 font-mono"
+                            style={{ color: "#D4AF37" }}
+                          >
+                            {p.id ?? p.sku ?? "—"}
+                          </td>
+                        </tr>
+                      ))}
+                      {catalogProducts.length > 20 && (
+                        <tr>
+                          <td
+                            colSpan={2}
+                            className="py-2 px-3 text-center"
+                            style={{ color: "#555" }}
+                          >
+                            +{catalogProducts.length - 20} more products
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
