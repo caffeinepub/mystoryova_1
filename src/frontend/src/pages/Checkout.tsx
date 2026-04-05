@@ -17,7 +17,7 @@ import {
   openRazorpayCheckout,
 } from "../config/razorpayLinks";
 import { useActor } from "../hooks/useActor";
-import { hashPassword, useCustomerAuth } from "../hooks/useCustomerAuth";
+import { useCustomerAuth } from "../hooks/useCustomerAuth";
 import { useSEO } from "../hooks/useSEO";
 import { type CartItem, clearCart, getCart } from "../utils/cart";
 
@@ -159,21 +159,24 @@ export default function Checkout({ isDark }: Props) {
   );
   const discountedTotal = Math.max(0, subtotal - discount);
 
-  function getItemShipping(item: CartItem): number {
-    if (freeShippingMap[item.productId ?? item.id]) return 0;
-    return region === "india" ? shippingINR : shippingIntl;
-  }
-
   function getDisplayPrice(item: CartItem): string {
     return currency === "INR"
       ? `₹${item.price * item.quantity}`
       : `$${(item.price * item.quantity).toFixed(2)}`;
   }
 
-  const totalShipping = items.reduce(
-    (sum, item) => sum + getItemShipping(item),
-    0,
-  );
+  // Flat shipping: free only if ALL items are free shipping, otherwise one charge for the whole order
+  const allFreeShipping =
+    items.length > 0 &&
+    items.every((item) => freeShippingMap[item.productId ?? item.id]);
+  const totalShipping = allFreeShipping
+    ? 0
+    : items.length > 0
+      ? region === "india"
+        ? shippingINR
+        : shippingIntl
+      : 0;
+
   const totalWithShipping = Math.max(0, discountedTotal + totalShipping);
   const subtotalDisplay =
     currency === "INR" ? `₹${subtotal}` : `$${subtotal.toFixed(2)}`;
@@ -954,7 +957,6 @@ export default function Checkout({ isDark }: Props) {
               </h2>
               <div className="flex flex-col gap-4">
                 {items.map((item, i) => {
-                  const itemShipping = getItemShipping(item);
                   const isFreeShipping =
                     freeShippingMap[item.productId ?? item.id] === true;
                   return (
@@ -1013,35 +1015,6 @@ export default function Checkout({ isDark }: Props) {
                           </p>
                         </div>
                       </div>
-                      <div
-                        className="flex justify-between text-xs rounded-lg px-3 py-2"
-                        style={{
-                          background: isFreeShipping
-                            ? "rgba(34,197,94,0.06)"
-                            : "rgba(212,175,55,0.05)",
-                          border: isFreeShipping
-                            ? "1px solid rgba(34,197,94,0.2)"
-                            : "1px solid rgba(212,175,55,0.15)",
-                        }}
-                      >
-                        <span style={{ color: mutedColor }}>
-                          Shipping (
-                          {region === "india" ? "India 🇮🇳" : "International 🌍"}
-                          )
-                        </span>
-                        <span
-                          style={{
-                            color: isFreeShipping ? "#22C55E" : fg,
-                            fontWeight: 600,
-                          }}
-                        >
-                          {isFreeShipping
-                            ? "FREE"
-                            : currency === "INR"
-                              ? `₹${itemShipping.toFixed(0)}`
-                              : `$${itemShipping.toFixed(2)}`}
-                        </span>
-                      </div>
                     </div>
                   );
                 })}
@@ -1065,7 +1038,7 @@ export default function Checkout({ isDark }: Props) {
                 )}
                 {totalShipping > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span style={{ color: mutedColor }}>Total Shipping</span>
+                    <span style={{ color: mutedColor }}>Delivery Charge</span>
                     <span style={{ color: fg }}>
                       {currency === "INR"
                         ? `₹${totalShipping.toFixed(0)}`
@@ -1073,15 +1046,14 @@ export default function Checkout({ isDark }: Props) {
                     </span>
                   </div>
                 )}
-                {totalShipping === 0 &&
-                  items.every((i) => freeShippingMap[i.id]) && (
-                    <div className="flex justify-between text-sm">
-                      <span style={{ color: mutedColor }}>Shipping</span>
-                      <span style={{ color: "#22C55E", fontWeight: 600 }}>
-                        FREE
-                      </span>
-                    </div>
-                  )}
+                {totalShipping === 0 && allFreeShipping && items.length > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: mutedColor }}>Shipping</span>
+                    <span style={{ color: "#22C55E", fontWeight: 600 }}>
+                      FREE
+                    </span>
+                  </div>
+                )}
                 <div
                   className="flex justify-between font-bold text-lg mt-2 pt-2"
                   style={{ borderTop: `1px solid ${cardBorder}` }}
