@@ -247,10 +247,18 @@ export default function Cart({ isDark }: Props) {
 
               <Separator className="my-4" style={{ background: cardBorder }} />
 
-              <div className="flex justify-between font-bold text-lg mb-6">
+              <div className="flex justify-between font-bold text-lg mb-4">
                 <span style={{ color: fg }}>Total</span>
                 <span style={{ color: "#D4AF37" }}>₹{subtotal}</span>
               </div>
+
+              <p
+                className="text-xs mb-6 leading-relaxed"
+                style={{ color: mutedColor }}
+              >
+                📦 Merchandise fulfilled via Printrove (3–7 business days
+                delivery after dispatch).
+              </p>
 
               <Button
                 data-ocid="cart.submit_button"

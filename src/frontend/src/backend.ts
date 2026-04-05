@@ -98,13 +98,15 @@ export interface BlogPost {
     excerpt: string;
     category: string;
 }
-export interface TransformationOutput {
-    status: bigint;
-    body: Uint8Array;
-    headers: Array<http_header>;
-}
-export interface _CaffeineStorageRefillInformation {
-    proposed_top_up_amount?: bigint;
+export interface Coupon {
+    discountValue: bigint;
+    expiryDate: bigint;
+    code: string;
+    discountType: string;
+    usageCount: bigint;
+    isActive: boolean;
+    maxUsages: bigint;
+    currency: string;
 }
 export interface ShippingAddress {
     country: string;
@@ -116,23 +118,6 @@ export interface ShippingAddress {
     phone: string;
     pincode: string;
 }
-export interface OrderItem {
-    name: string;
-    productId: string;
-    currency: string;
-    quantity: bigint;
-    price: bigint;
-}
-export interface Coupon {
-    discountValue: bigint;
-    expiryDate: bigint;
-    code: string;
-    discountType: string;
-    usageCount: bigint;
-    isActive: boolean;
-    maxUsages: bigint;
-    currency: string;
-}
 export interface Book {
     id: string;
     coverImageUrl: string;
@@ -143,6 +128,16 @@ export interface Book {
     genre: string;
     formats: Array<BookFormat>;
 }
+export interface OrderItem {
+    name: string;
+    productId: string;
+    currency: string;
+    quantity: bigint;
+    price: bigint;
+}
+export interface _CaffeineStorageRefillInformation {
+    proposed_top_up_amount?: bigint;
+}
 export interface _CaffeineStorageCreateCertificateResult {
     method: string;
     blob_hash: string;
@@ -152,9 +147,7 @@ export interface Order {
     razorpayPaymentId: string;
     customerName: string;
     status: string;
-    fulfillmentStatus: string;
     customerPhone: string;
-    qikinkOrderId: string;
     createdAt: bigint;
     totalAmount: bigint;
     currency: string;
@@ -164,10 +157,6 @@ export interface Order {
     items: Array<OrderItem>;
     customerEmail: string;
 }
-export interface http_header {
-    value: string;
-    name: string;
-}
 export interface MerchItem {
     id: string;
     razorpayUrl: string;
@@ -175,23 +164,10 @@ export interface MerchItem {
     name: string;
     description: string;
     isActive: boolean;
-    qikinkProductId: string;
     category: string;
     priceINR: bigint;
     priceUSD: bigint;
 }
-export interface http_request_result {
-    status: bigint;
-    body: Uint8Array;
-    headers: Array<http_header>;
-}
-export type BookFormat = {
-    __kind__: "paperback";
-    paperback: string;
-} | {
-    __kind__: "kindle";
-    kindle: string;
-};
 export interface Audiobook {
     id: string;
     duration: string;
@@ -205,10 +181,13 @@ export interface Audiobook {
     priceUSD: bigint;
     narrator: string;
 }
-export interface TransformationInput {
-    context: Uint8Array;
-    response: http_request_result;
-}
+export type BookFormat = {
+    __kind__: "paperback";
+    paperback: string;
+} | {
+    __kind__: "kindle";
+    kindle: string;
+};
 export interface CustomerAccount {
     id: string;
     name: string;
@@ -285,7 +264,6 @@ export interface backendInterface {
     getMerchItems(): Promise<Array<MerchItem>>;
     getOrder(id: string): Promise<Order | null>;
     getOrders(): Promise<Array<Order>>;
-    getQikinkCatalog(): Promise<string>;
     getReviews(bookId: string): Promise<Array<Review>>;
     getSetting(key: string): Promise<Setting | null>;
     getSubscribers(): Promise<Array<string>>;
@@ -294,8 +272,6 @@ export interface backendInterface {
     registerCustomer(name: string, email: string, passwordHash: string): Promise<string | null>;
     removeSubscriber(email: string): Promise<void>;
     setDefaultAddress(customerId: string, addressId: string): Promise<void>;
-    syncQikinkCatalog(): Promise<string>;
-    transform(input: TransformationInput): Promise<TransformationOutput>;
     updateAudiobook(audiobook: Audiobook): Promise<void>;
     updateAuthorBio(bio: string): Promise<void>;
     updateBlogPost(post: BlogPost): Promise<void>;
@@ -303,8 +279,6 @@ export interface backendInterface {
     updateCustomer(account: CustomerAccount): Promise<void>;
     updateCustomerAddress(address: CustomerAddress): Promise<void>;
     updateMerchItem(merchItem: MerchItem): Promise<void>;
-    updateOrderFulfillment(id: string, qikinkOrderId: string, fulfillmentStatus: string): Promise<void>;
-    fulfillOrderViaQikink(orderId: string): Promise<string>;
     updateOrderStatus(id: string, status: string): Promise<void>;
     updateSetting(setting: Setting): Promise<void>;
     validateCoupon(code: string): Promise<Coupon | null>;
@@ -858,20 +832,6 @@ export class Backend implements backendInterface {
             return from_candid_vec_n30(this._uploadFile, this._downloadFile, result);
         }
     }
-    async getQikinkCatalog(): Promise<string> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getQikinkCatalog();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getQikinkCatalog();
-            return result;
-        }
-    }
     async getReviews(arg0: string): Promise<Array<Review>> {
         if (this.processError) {
             try {
@@ -984,34 +944,6 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async syncQikinkCatalog(): Promise<string> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.syncQikinkCatalog();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.syncQikinkCatalog();
-            return result;
-        }
-    }
-    async transform(arg0: TransformationInput): Promise<TransformationOutput> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.transform(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.transform(arg0);
-            return result;
-        }
-    }
     async updateAudiobook(arg0: Audiobook): Promise<void> {
         if (this.processError) {
             try {
@@ -1110,20 +1042,6 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async updateOrderFulfillment(arg0: string, arg1: string, arg2: string): Promise<void> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.updateOrderFulfillment(arg0, arg1, arg2);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.updateOrderFulfillment(arg0, arg1, arg2);
-            return result;
-        }
-    }
     async updateOrderStatus(arg0: string, arg1: string): Promise<void> {
         if (this.processError) {
             try {
@@ -1138,19 +1056,6 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async fulfillOrderViaQikink(arg0: string): Promise<string> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.fulfillOrderViaQikink(arg0);
-                return result;
-            } catch(e) {
-                this.processError(e);
-            }
-        }
-        const result = await this.actor.fulfillOrderViaQikink(arg0);
-        return result;
-    }
-
     async updateSetting(arg0: Setting): Promise<void> {
         if (this.processError) {
             try {
@@ -1257,9 +1162,7 @@ function from_candid_record_n28(_uploadFile: (file: ExternalBlob) => Promise<Uin
     razorpayPaymentId: string;
     customerName: string;
     status: string;
-    fulfillmentStatus: string;
     customerPhone: string;
-    qikinkOrderId: string;
     createdAt: bigint;
     totalAmount: bigint;
     currency: string;
@@ -1273,9 +1176,7 @@ function from_candid_record_n28(_uploadFile: (file: ExternalBlob) => Promise<Uin
     razorpayPaymentId: string;
     customerName: string;
     status: string;
-    fulfillmentStatus: string;
     customerPhone: string;
-    qikinkOrderId: string;
     createdAt: bigint;
     totalAmount: bigint;
     currency: string;
@@ -1290,9 +1191,7 @@ function from_candid_record_n28(_uploadFile: (file: ExternalBlob) => Promise<Uin
         razorpayPaymentId: value.razorpayPaymentId,
         customerName: value.customerName,
         status: value.status,
-        fulfillmentStatus: value.fulfillmentStatus,
         customerPhone: value.customerPhone,
-        qikinkOrderId: value.qikinkOrderId,
         createdAt: value.createdAt,
         totalAmount: value.totalAmount,
         currency: value.currency,
@@ -1363,9 +1262,7 @@ function to_candid_record_n14(_uploadFile: (file: ExternalBlob) => Promise<Uint8
     razorpayPaymentId: string;
     customerName: string;
     status: string;
-    fulfillmentStatus: string;
     customerPhone: string;
-    qikinkOrderId: string;
     createdAt: bigint;
     totalAmount: bigint;
     currency: string;
@@ -1379,9 +1276,7 @@ function to_candid_record_n14(_uploadFile: (file: ExternalBlob) => Promise<Uint8
     razorpayPaymentId: string;
     customerName: string;
     status: string;
-    fulfillmentStatus: string;
     customerPhone: string;
-    qikinkOrderId: string;
     createdAt: bigint;
     totalAmount: bigint;
     currency: string;
@@ -1396,9 +1291,7 @@ function to_candid_record_n14(_uploadFile: (file: ExternalBlob) => Promise<Uint8
         razorpayPaymentId: value.razorpayPaymentId,
         customerName: value.customerName,
         status: value.status,
-        fulfillmentStatus: value.fulfillmentStatus,
         customerPhone: value.customerPhone,
-        qikinkOrderId: value.qikinkOrderId,
         createdAt: value.createdAt,
         totalAmount: value.totalAmount,
         currency: value.currency,

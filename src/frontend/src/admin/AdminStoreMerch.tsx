@@ -78,7 +78,6 @@ interface FormState {
   colorStock: ColorEntry[];
   colorImages: ColorVariantImages[];
   productImages: ProductImages;
-  qikinkProductId: string;
 }
 
 const EMPTY_SIZE_STOCK: SizeStock = {
@@ -111,7 +110,6 @@ const EMPTY_FORM: FormState = {
   colorStock: [],
   colorImages: [],
   productImages: { ...EMPTY_PRODUCT_IMAGES },
-  qikinkProductId: "",
 };
 
 function icErrMsg(err: unknown): string {
@@ -133,7 +131,6 @@ function formToMerch(f: FormState): MerchItem {
     priceUSD: BigInt(Math.round(Number(f.priceUSD) * 100)),
     razorpayUrl: f.razorpayUrl,
     isActive: f.isActive,
-    qikinkProductId: f.qikinkProductId,
   };
 }
 
@@ -171,7 +168,6 @@ function merchToForm(
     colorStock: cs.map((c) => ({ ...c, stock: String(c.stock) })),
     colorImages: ci,
     productImages: pi,
-    qikinkProductId: m.qikinkProductId ?? "",
   };
 }
 
@@ -291,7 +287,6 @@ export default function AdminStoreMerch() {
   const [uploadingCoverEmoji, setUploadingCoverEmoji] = useState(false);
   const { uploadImage } = useStorageClient();
   const [activeColorImageIdx, setActiveColorImageIdx] = useState(0);
-  const [qikinkEnabled, setQikinkEnabled] = useState(false);
 
   async function load() {
     if (!actor) return;
@@ -366,8 +361,6 @@ export default function AdminStoreMerch() {
       setColorStockMap(csMap);
       setColorImagesMap(ciMap);
       setProductImagesMap(piMap);
-      const qikinkSetting = allSettings.find((s) => s.key === "qikink_enabled");
-      setQikinkEnabled(qikinkSetting?.value === "true");
     } catch {
       // error ignored
     } finally {
@@ -571,7 +564,6 @@ export default function AdminStoreMerch() {
           priceUSD: BigInt(Math.round((m.priceUSD ?? 0) * 100)),
           razorpayUrl: "",
           isActive: true,
-          qikinkProductId: "",
         });
       }
       toast.success("Seeded default merch items");
@@ -1452,44 +1444,6 @@ export default function AdminStoreMerch() {
                   Active (visible in store)
                 </Label>
               </div>
-
-              {qikinkEnabled && (
-                <div
-                  className="col-span-2 flex flex-col gap-2 rounded-xl p-4"
-                  style={{
-                    background: "rgba(212,175,55,0.04)",
-                    border: "1px solid rgba(212,175,55,0.15)",
-                  }}
-                >
-                  <Label
-                    htmlFor="qikink-product-id"
-                    className="text-xs font-semibold"
-                    style={{ color: "#D4AF37" }}
-                  >
-                    Fulfillment Product ID
-                  </Label>
-                  <Input
-                    id="qikink-product-id"
-                    data-ocid="admin.merch.input"
-                    value={form.qikinkProductId}
-                    onChange={(e) =>
-                      setForm((p) => ({
-                        ...p,
-                        qikinkProductId: e.target.value,
-                      }))
-                    }
-                    placeholder="e.g. 123456"
-                    style={{
-                      background: "rgba(255,255,255,0.04)",
-                      border: "1px solid rgba(212,175,55,0.2)",
-                      color: "#f0ead6",
-                    }}
-                  />
-                  <p className="text-xs" style={{ color: "#555" }}>
-                    Map this product to a fulfillment provider SKU
-                  </p>
-                </div>
-              )}
             </div>
             <div className="flex gap-3 mt-2">
               <Button
